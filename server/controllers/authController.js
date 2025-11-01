@@ -20,13 +20,11 @@ const register = async (req, res) => {
       data: { name, email, password: hashedPassword },
     });
     const token = generateToken(user);
-    res
-      .status(201)
-      .json({
-        message: "User registered successfully",
-        user: { name, email },
-        token,
-      });
+    res.status(201).json({
+      message: "User registered successfully",
+      user: { name, email },
+      token,
+    });
   } catch (err) {
     console.error("Register error:", err);
     res.status(500).json({ message: "Internal server error" });
@@ -45,13 +43,11 @@ const login = async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(400).json({ message: "Invalid credentials" });
     const token = generateToken(user);
-    res
-      .status(200)
-      .json({
-        message: "Login successful",
-        user: { name: user.name, email },
-        token,
-      });
+    res.status(200).json({
+      message: "Login successful",
+      user: { name: user.name, email },
+      token,
+    });
   } catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ message: "Internal server error" });
@@ -72,37 +68,49 @@ const getProfile = async (req, res) => {
 };
 
 const googleLogin = async (req, res) => {
-    try {
-      const { credential } = req.body;
-      if (!credential) return res.status(400).json({ message: "Missing Google credential" });
-      const ticket = await client.verifyIdToken({
-        idToken: credential,
-        audience: process.env.GOOGLE_CLIENT_ID,
+  try {
+    const { credential } = req.body;
+    if (!credential)
+      return res.status(400).json({ message: "Missing Google credential" });
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+    if (!email)
+      return res.status(400).json({ message: "Invalid Google token" });
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name,
+          email,
+          password: null,
+          googleId,
+          profilePicture: picture || null,
+        },
       });
-      const payload = ticket.getPayload();
-      const { sub: googleId, email, name, picture } = payload;
-      if (!email) return res.status(400).json({ message: "Invalid Google token" });
-      let user = await prisma.user.findUnique({ where: { email } });
-      if (!user) {
-        user = await prisma.user.create({
-          data: { name, email, password: null, googleId, profilePicture: picture || null },
-        });
-      }
-      const token = generateToken(user);
-      res.status(200).json({
-        message: "Google login successful",
-        user: { name: user.name, email: user.email, picture: user.profilePicture },
-        token,
-      });
-    } catch (err) {
-      console.error("Google login error:", err);
-      res.status(500).json({ message: "Internal server error" });
     }
-  };
+    const token = generateToken(user);
+    res.status(200).json({
+      message: "Google login successful",
+      user: {
+        name: user.name,
+        email: user.email,
+        picture: user.profilePicture,
+      },
+      token,
+    });
+  } catch (err) {
+    console.error("Google login error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
 
 module.exports = {
   register,
   login,
   getProfile,
-  googleLogin
+  googleLogin,
 };
