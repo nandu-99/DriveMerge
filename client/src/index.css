@@ -1,0 +1,297 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here.
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Minimal modern theme (light background, neutral greys, subtle accent) */
+    --background: 210 20% 98%; /* very light */
+    --foreground: 215 12% 12%; /* dark text */
+
+    /* Card / surface */
+    --card: 0 0% 100%;
+    --card-foreground: 215 12% 12%;
+    --glass-bg: 0 0% 100%;
+    --glass-border: 210 15% 92%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 12% 12%;
+
+    /* Primary accent: muted indigo */
+    --primary: 224 40% 14%; /* dark indigo for buttons */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 12% 16%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 210 8% 74%;
+    --muted-foreground: 215 10% 40%;
+
+    --accent: 205 80% 45%; /* subtle cyan accent */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 75% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 12% 92%;
+    --input: 210 12% 92%;
+    --ring: 224 40% 14%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar */
+    --sidebar-background: 210 18% 98%;
+    --sidebar-foreground: 215 12% 12%;
+    --sidebar-primary: 224 40% 14%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 12% 96%;
+    --sidebar-accent-foreground: 215 12% 12%;
+    --sidebar-border: 210 12% 92%;
+    --sidebar-ring: 224 40% 14%;
+
+    /* No gradients for a flat, minimal look */
+    --gradient-primary: none;
+    --gradient-glass: none;
+
+    /* Subtle shadows */
+    --shadow-glass: 0 6px 18px 0 rgba(16, 24, 40, 0.06);
+    --shadow-glow: 0 0 12px rgba(16, 24, 40, 0.04);
+    --shadow-elevated: 0 10px 30px 0 rgba(16, 24, 40, 0.08);
+  }
+
+  .dark {
+    /* Dark variant — modern minimal dark */
+    --background: 210 10% 8%;
+    --foreground: 210 10% 96%;
+
+    --card: 210 10% 10%;
+    --card-foreground: 210 10% 96%;
+    --glass-bg: 210 10% 10%;
+    --glass-border: 210 8% 18%;
+
+    --popover: 210 10% 10%;
+    --popover-foreground: 210 10% 96%;
+
+    --primary: 224 40% 60%;
+    --primary-foreground: 210 10% 6%;
+
+    --secondary: 210 10% 20%;
+    --secondary-foreground: 210 10% 96%;
+
+    --muted: 210 8% 30%;
+    --muted-foreground: 210 8% 60%;
+
+    --accent: 205 80% 55%;
+    --accent-foreground: 210 10% 6%;
+
+    --destructive: 0 75% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 8% 18%;
+    --input: 210 8% 18%;
+    --ring: 224 40% 60%;
+
+    --sidebar-background: 210 10% 6%;
+    --sidebar-foreground: 210 10% 96%;
+    --sidebar-primary: 224 40% 60%;
+    --sidebar-primary-foreground: 210 10% 6%;
+    --sidebar-accent: 210 10% 12%;
+    --sidebar-accent-foreground: 210 10% 96%;
+    --sidebar-border: 210 8% 18%;
+    --sidebar-ring: 224 40% 60%;
+  }
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    /* default element border color using design token */
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    min-height: 100vh;
+  }
+}
+
+@layer utilities {
+  .glass {
+    /* flat card look: white surface with subtle border and shadow */
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--glass-border));
+    box-shadow: var(--shadow-glass);
+  }
+
+  .glass-card {
+    border-radius: var(--radius);
+    padding: 0.75rem;
+    background: hsl(var(--card));
+    box-shadow: var(--shadow-elevated);
+  }
+
+  .glass-hover {
+    transition: all 0.2s ease;
+  }
+
+  .text-gradient {
+    color: hsl(var(--foreground));
+  }
+
+  .btn-glass {
+    /* replicate glass + spacing + rounded + transition + hover/active behavior */
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--glass-border));
+    box-shadow: var(--shadow-glass);
+    padding: 0.75rem 1.5rem; /* py-3 px-6 */
+    border-radius: 0.75rem; /* rounded-xl */
+    font-weight: 500; /* font-medium */
+    transition: all 0.3s ease;
+  }
+
+  .btn-glass:hover {
+    background-color: rgba(255, 255, 255, 0.6);
+  }
+
+  .btn-glass:active {
+    transform: scale(0.95);
+  }
+
+  .btn-primary-glass {
+    /* flat primary button */
+    padding: 0.5rem 1.25rem;
+    border-radius: 0.75rem;
+    font-weight: 600;
+    color: hsl(var(--primary-foreground));
+    background: hsl(var(--primary));
+    box-shadow: 0 6px 18px rgba(16, 24, 40, 0.06);
+    transition: box-shadow 0.15s ease, transform 0.12s ease;
+  }
+
+  /* From Uiverse.io by vinodjangid07 — loading truck styles */
+  /* Loader container */
+  .loader {
+    width: fit-content;
+    height: fit-content;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .truckWrapper {
+    width: 200px;
+    height: 100px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    align-items: center;
+    justify-content: flex-end;
+    overflow-x: hidden;
+  }
+
+  /* truck upper body */
+  .truckBody {
+    width: 130px;
+    height: fit-content;
+    margin-bottom: 6px;
+    animation: motion 1s linear infinite;
+  }
+
+  /* truck suspension animation*/
+  @keyframes motion {
+    0% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(3px);
+    }
+    100% {
+      transform: translateY(0px);
+    }
+  }
+
+  /* truck's tires */
+  .truckTires {
+    width: 130px;
+    height: fit-content;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0px 10px 0px 15px;
+    position: absolute;
+    bottom: 0;
+  }
+  .truckTires svg {
+    width: 24px;
+  }
+
+  .road {
+    width: 100%;
+    height: 1.5px;
+    background-color: #282828;
+    position: relative;
+    bottom: 0;
+    align-self: flex-end;
+    border-radius: 3px;
+  }
+  .road::before {
+    content: "";
+    position: absolute;
+    width: 20px;
+    height: 100%;
+    background-color: #282828;
+    right: -50%;
+    border-radius: 3px;
+    animation: roadAnimation 1.4s linear infinite;
+    border-left: 10px solid white;
+  }
+  .road::after {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 100%;
+    background-color: #282828;
+    right: -65%;
+    border-radius: 3px;
+    animation: roadAnimation 1.4s linear infinite;
+    border-left: 4px solid white;
+  }
+
+  .lampPost {
+    position: absolute;
+    bottom: 0;
+    right: -90%;
+    height: 90px;
+    animation: roadAnimation 1.4s linear infinite;
+  }
+
+  @keyframes roadAnimation {
+    0% {
+      transform: translateX(0px);
+    }
+    100% {
+      transform: translateX(-350px);
+    }
+  }
+
+  /* Full-page centered loader wrapper for page-level loading */
+  .page-loader {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 60;
+    /* subtle overlay to indicate loading state; adapts using color tokens */
+    background: rgba(255, 255, 255, 0.6);
+  }
+
+  .dark .page-loader {
+    background: rgba(0, 0, 0, 0.6);
+  }
+}
