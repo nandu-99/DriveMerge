@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "format": "prettier --write ."
   },
   "keywords": [],
   "author": "",
@@ -12,9 +13,18 @@
   "type": "commonjs",
   "dependencies": {
     "@prisma/client": "^6.18.0",
-    "express": "^5.1.0"
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "google-auth-library": "^10.5.0",
+    "googleapis": "^164.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2"
   },
   "devDependencies": {
+    "prettier": "^3.6.2",
     "prisma": "^6.18.0"
   }
 }
