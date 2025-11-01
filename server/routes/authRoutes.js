@@ -4,11 +4,13 @@ const {
   register,
   login,
   getProfile,
+  googleLogin,
 } = require("../controllers/authController");
 const { authMiddleware } = require("../middlewares/authMiddleware");
 
 router.post("/register", register);
 router.post("/login", login);
 router.get("/me", authMiddleware, getProfile);
+router.post("/google-login", googleLogin);
 
 module.exports = router;
