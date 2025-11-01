@@ -1,0 +1,39 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             Int      @id @default(autoincrement())
+  email          String   @unique
+  name           String?
+  password       String?   // null for OAuth-only accounts
+  googleId       String?  @unique
+  profilePicture String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // one user → many Drive accounts
+  driveAccounts  DriveAccount[]
+}
+
+model DriveAccount {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  email         String
+  refreshToken  String   @db.VarChar(1000)
+  accessToken   String?  @db.Text 
+  usedSpaceGb   Float
+  totalSpaceGb  Float
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, email])
+}
