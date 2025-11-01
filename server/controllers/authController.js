@@ -2,6 +2,8 @@ const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
 const { generateToken } = require("../utils/jwt");
 const prisma = new PrismaClient();
+const { OAuth2Client } = require("google-auth-library");
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const register = async (req, res) => {
   try {
@@ -69,8 +71,38 @@ const getProfile = async (req, res) => {
   }
 };
 
+const googleLogin = async (req, res) => {
+    try {
+      const { credential } = req.body;
+      if (!credential) return res.status(400).json({ message: "Missing Google credential" });
+      const ticket = await client.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      const { sub: googleId, email, name, picture } = payload;
+      if (!email) return res.status(400).json({ message: "Invalid Google token" });
+      let user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
+        user = await prisma.user.create({
+          data: { name, email, password: null, googleId, profilePicture: picture || null },
+        });
+      }
+      const token = generateToken(user);
+      res.status(200).json({
+        message: "Google login successful",
+        user: { name: user.name, email: user.email, picture: user.profilePicture },
+        token,
+      });
+    } catch (err) {
+      console.error("Google login error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  };
+
 module.exports = {
   register,
   login,
   getProfile,
+  googleLogin
 };
