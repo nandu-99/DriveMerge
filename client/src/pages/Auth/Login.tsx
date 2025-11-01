@@ -12,17 +12,30 @@ const Login = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    // Supabase integration has been removed from the client.
-    // Replace this with a call to your backend auth API or other auth provider.
-    setTimeout(() => {
+    // Hardcoded admin credentials for UI-only mode
+    const HARD_EMAIL = "admin@gmail.com";
+    const HARD_PASSWORD = "admin@1234";
+
+    // quick client-side check (UI-only, no real auth)
+    if (email === HARD_EMAIL && password === HARD_PASSWORD) {
       setLoading(false);
-      toast({
-        title: "Authentication disabled",
-        description:
-          "Sign in with Supabase was removed. Please use the server auth or configure an external provider.",
-      });
+      // Persist a simple local user id so ProtectedRoute recognizes the user
+      try {
+        localStorage.setItem("dm_user_id", "admin");
+      } catch (e) {
+        // ignore storage errors in restricted environments
+      }
+      toast({ title: "Signed in", description: `Welcome back ${email}` });
       navigate("/");
-    }, 500);
+      return;
+    }
+
+    // invalid credentials
+    setLoading(false);
+    toast({
+      title: "Sign in failed",
+      description: "Invalid email or password",
+    });
   };
 
   return (
