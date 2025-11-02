@@ -2,6 +2,7 @@ import { Bell, Shield, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
 import { apiGet, apiFetch } from "@/lib/api";
+import { UnderDevelopment } from "@/components/UnderDevelopment";
 
 const Settings = () => {
   const { toast } = useToast();
@@ -51,6 +52,7 @@ const Settings = () => {
   return (
     <div className="min-h-[80vh] flex items-start justify-center py-12 px-4">
       <div className="w-full max-w-3xl space-y-6">
+      <UnderDevelopment/>
         <div className="text-center">
           <h1 className="text-3xl font-semibold">Settings</h1>
           <p className="text-sm text-muted-foreground mt-2">
@@ -177,7 +179,7 @@ const Settings = () => {
             {loading ? "Saving..." : "Save Changes"}
           </button>
         </div>
-      </div>
+      nu</div>
     </div>
   );
 };

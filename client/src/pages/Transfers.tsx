@@ -3,6 +3,7 @@ import { HardDrive, Package, Play, Pause, List } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useConnectedAccounts } from "@/hooks/use-connected-accounts";
 import { useUploads } from "@/context/uploads";
+import { UnderDevelopment } from "@/components/UnderDevelopment";
 
 const Transfers = () => {
   const { data: accounts = [] } = useConnectedAccounts();
@@ -51,6 +52,7 @@ const Transfers = () => {
 
   return (
     <div className="space-y-6">
+      <UnderDevelopment/>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Transfers</h1>
