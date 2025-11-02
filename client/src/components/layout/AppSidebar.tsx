@@ -1,5 +1,5 @@
-import { Home, Settings, Eye, Plus, HardDrive } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { Home, Settings, Eye, Plus, HardDrive, LogOut } from "lucide-react";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -24,27 +24,32 @@ const menuItems = [
 
 export function AppSidebar() {
   const { state } = useSidebar();
+  const navigate = useNavigate();
   const collapsed = state === "collapsed";
   const { data: accounts = [], isLoading } = useConnectedAccounts();
   const [showAdd, setShowAdd] = useState(false);
+
+  const handleLogout = () => {
+    localStorage.removeItem("dm_token");
+    localStorage.removeItem("dm_user_id");
+    localStorage.removeItem("dm_user_name");
+    navigate("/login");
+  };
 
   return (
     <Sidebar className="border-r-0">
       <SidebarContent className="glass-card m-2 p-4">
         {/* Logo/Title */}
-        <div className="mb-6 px-2">
+        <div className="px-2">
           <div
-            className={`flex items-center gap-3 transition-all ${
-              collapsed ? "justify-center" : ""
-            }`}
           >
             <img
               src="/DriveMergeLogo.png"
               alt="DriveMerge"
               className={
                 collapsed
-                  ? "object-contain h-7 w-7 mx-auto rounded-md p-0.5 bg-white/5"
-                  : "object-contain h-14 w-14 rounded-md p-1 bg-white/5"
+                  ? "object-contain h-7 mx-auto rounded-md p-0.5 bg-white/5"
+                  : "object-contain h-14 mx-auto rounded-md p-0.5 bg-white/5"
               }
               style={{ display: "block" }}
               onError={(e) => {
@@ -52,7 +57,7 @@ export function AppSidebar() {
                 el.style.display = "none";
               }}
             />{" "}
-            <span className="sr-only">DriveMerge</span>
+            {/* <span className="sr-only">DriveMerge</span> */}
           </div>
         </div>
 
@@ -117,7 +122,7 @@ export function AppSidebar() {
                   </div>
                 )}
 
-                {accounts.map((account) => {
+{accounts.map((account) => {
                   const acct = account as {
                     id: string;
                     email: string;
@@ -133,11 +138,11 @@ export function AppSidebar() {
                   return (
                     <div
                       key={acct.id}
-                      className="glass-card p-3 space-y-2 flex items-center justify-between"
+                      className="glass-card p-3 space-y-2"
                     >
                       <div className="flex items-center gap-3">
-                        <HardDrive className="h-5 w-5 text-primary" />
-                        <div className="min-w-0">
+                        <HardDrive className="h-5 w-5 text-primary flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium truncate">
                             {acct.email}
                           </div>
@@ -146,11 +151,13 @@ export function AppSidebar() {
                           </div>
                         </div>
                       </div>
-                      <div className="w-24 text-right">
-                        <div className="text-sm font-semibold">
-                          {percentage}%
+                      <div className="w-full">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-xs font-semibold">
+                            {percentage}%
+                          </div>
                         </div>
-                        <div className="h-2 bg-white/40 rounded-full overflow-hidden mt-1">
+                        <div className="h-2 bg-white/40 rounded-full overflow-hidden">
                           <div
                             className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all"
                             style={{ width: `${percentage}%` }}
@@ -164,6 +171,25 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
+
+        {/* Logout */}
+        <SidebarGroup className="mt-auto">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg transition-all hover:bg-white/40 w-full"
+                  >
+                    <LogOut className="h-5 w-5" />
+                    {!collapsed && <span>Logout</span>}
+                  </button>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
     </Sidebar>
   );

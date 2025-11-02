@@ -5,7 +5,7 @@ export function FileDropzone() {
   const { toast } = useToast();
 
   return (
-    <div className="w-full">
+    <div className="w-full max-w-4xl mx-auto">
       <FileUpload
         onUploadSuccess={(file) => {
           toast({
@@ -20,9 +20,6 @@ export function FileDropzone() {
             variant: "destructive",
           });
         }}
-        // Allow all file types by default (videos, archives, documents, etc.)
-        // If you want to restrict types, pass an explicit array of MIME types.
-        // Allow larger uploads (20GB) — server also has a MAX_UPLOAD_BYTES env (default 20GB)
         maxFileSize={20 * 1024 * 1024 * 1024}
       />
     </div>

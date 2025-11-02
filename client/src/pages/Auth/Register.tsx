@@ -51,8 +51,26 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center px-4">
+    <div className="min-h-screen flex items-center justify-center px-4">
       <div className="glass-card max-w-md w-full p-8">
+      <div className="px-3 mb-2">
+          <div
+          >
+            <img
+              src="/DriveMergeLogo.png"
+              alt="DriveMerge"
+              className={
+                  "object-contain h-14 mx-auto rounded-md p-0.5 bg-white/5"
+              }
+              style={{ display: "block" }}
+              onError={(e) => {
+                const el = e.currentTarget as HTMLImageElement;
+                el.style.display = "none";
+              }}
+            />{" "}
+            {/* <span className="sr-only">DriveMerge</span> */}
+          </div>
+        </div>
         <h1 className="text-2xl font-semibold mb-2">Create account</h1>
         <p className="text-sm text-muted-foreground mb-6">
           Start using DriveMerge to unify your cloud storage
