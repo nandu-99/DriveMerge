@@ -1,4 +1,7 @@
-require("dotenv").config();
+// Load .env and override any existing environment variables so local dev .env values
+// (like DATABASE_URL) are used instead of a global shell value that may point to a
+// different DB (e.g. Postgres). In production you may want to remove `override: true`.
+require("dotenv").config({ override: true });
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");

@@ -10,7 +10,7 @@ export function FileDropzone() {
         onUploadSuccess={(file) => {
           toast({
             title: "Upload complete",
-            description: `${file.name} uploaded (simulated)`,
+            description: `${file.name} uploaded`,
           });
         }}
         onUploadError={(err) => {
@@ -20,8 +20,10 @@ export function FileDropzone() {
             variant: "destructive",
           });
         }}
-        acceptedFileTypes={["image/png", "image/jpeg", "image/svg+xml", "image/gif", "application/pdf"]}
-        maxFileSize={20 * 1024 * 1024}
+        // Allow all file types by default (videos, archives, documents, etc.)
+        // If you want to restrict types, pass an explicit array of MIME types.
+        // Allow larger uploads (20GB) — server also has a MAX_UPLOAD_BYTES env (default 20GB)
+        maxFileSize={20 * 1024 * 1024 * 1024}
       />
     </div>
   );

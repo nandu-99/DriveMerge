@@ -67,6 +67,35 @@ const getProfile = async (req, res) => {
   }
 };
 
+const updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { name, email } = req.body;
+    if (!name && !email) {
+      return res.status(400).json({ message: "Nothing to update" });
+    }
+
+    // if email provided, ensure it's not used by another user
+    if (email) {
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing && existing.id !== userId) {
+        return res.status(400).json({ message: "Email already in use" });
+      }
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { name: name ?? undefined, email: email ?? undefined },
+      select: { id: true, name: true, email: true },
+    });
+
+    res.json({ message: "Profile updated", user: updated });
+  } catch (err) {
+    console.error("updateProfile error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 const googleLogin = async (req, res) => {
   try {
     const { credential } = req.body;
@@ -112,5 +141,6 @@ module.exports = {
   register,
   login,
   getProfile,
+  updateProfile,
   googleLogin,
 };

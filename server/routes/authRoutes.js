@@ -12,6 +12,11 @@ const { oauthCallback } = require("../controllers/driveController");
 router.post("/register", register);
 router.post("/login", login);
 router.get("/me", authMiddleware, getProfile);
+router.patch(
+  "/me",
+  authMiddleware,
+  require("../controllers/authController").updateProfile
+);
 router.post("/google-login", googleLogin);
 router.get("/callback", oauthCallback);
 

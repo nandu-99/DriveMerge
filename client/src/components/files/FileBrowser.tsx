@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import FileListItem from "./FileListItem";
+import { apiGet } from "@/lib/api";
+
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "";
 
 type FileEntry = {
   id: string;
@@ -34,12 +37,31 @@ const mockFiles: FileEntry[] = [
   },
 ];
 
+function formatBytes(bytes: number) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let val = bytes;
+  while (val >= 1024 && i < units.length - 1) {
+    val /= 1024;
+    i++;
+  }
+  return `${Number(val.toFixed(2))} ${units[i]}`;
+}
+
 async function fetchFilesFromApi() {
   try {
-    const res = await fetch("/api/files/list");
-    if (!res.ok) throw new Error("no-api");
-    const data = await res.json();
-    return data.files as FileEntry[];
+  const data = await apiGet("/drive/files?limit=0");
+    // map server file shape to FileEntry
+    type ServerFile = { id: string; name: string; size?: number; modifiedAt?: string; mime?: string };
+    const files = (data.files || []).map((f: ServerFile) => ({
+      id: f.id,
+      name: f.name,
+      size: formatBytes(Number(f.size || 0)),
+      uploadedAt: f.modifiedAt ? new Date(f.modifiedAt).toLocaleString() : "",
+      mime: f.mime,
+    }));
+    return files as FileEntry[];
   } catch (e) {
     // fallback to mock
     return mockFiles;
@@ -67,9 +89,10 @@ export default function FileBrowser() {
 
   async function handleDownload(id: string) {
     try {
-      const res = await fetch(
-        `/api/files/download?id=${encodeURIComponent(id)}`
-      );
+      const token = typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
+      const res = await fetch(`${API_BASE}/drive/files/download?id=${encodeURIComponent(id)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!res.ok) {
         // fallback: create a small text blob
         const blob = new Blob([`File ${id} - mock content`], {
@@ -108,9 +131,10 @@ export default function FileBrowser() {
       | undefined;
     if (!f) return;
     try {
-      const res = await fetch(
-        `/api/files/download?id=${encodeURIComponent(id)}`
-      );
+      const token = typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
+      const res = await fetch(`${API_BASE}/drive/files/download?id=${encodeURIComponent(id)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!res.ok) {
         setPreview(f);
         return;

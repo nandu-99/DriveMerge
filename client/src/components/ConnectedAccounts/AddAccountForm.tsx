@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useAddConnectedAccount } from "@/hooks/use-connected-accounts";
 import { useToast } from "@/hooks/use-toast";
+import { apiGet } from "@/lib/api";
 
 interface Props {
   onDone?: () => void;
@@ -10,52 +10,37 @@ export default function AddAccountForm({ onDone }: Props) {
   const [email, setEmail] = useState("");
   const [total, setTotal] = useState<number>(15);
   const { toast } = useToast();
-  const mutation = useAddConnectedAccount();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleConnect = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     try {
-      await mutation.mutateAsync({ email, total_space: total });
-      toast({
-        title: "Account added",
-        description: `${email} connected (mock)`,
-      });
-      setEmail("");
-      setTotal(15);
-      onDone?.();
-    } catch (err: unknown) {
+      const data = await apiGet("/drive/auth-url");
+      const url = data?.url ?? data;
+      if (!url) {
+        toast({ title: "Error", description: "Failed to get auth URL" });
+        return;
+      }
+      // redirect to Google OAuth flow handled by backend
+      window.location.href = String(url);
+    } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast({ title: "Error", description: msg ?? "Failed to add account" });
+      toast({
+        title: "Error",
+        description: msg ?? "Failed to start auth flow",
+      });
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={handleConnect} className="space-y-3">
       <div>
-        <label className="block text-sm font-medium mb-1">Account Email</label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          className="w-full px-3 py-2 glass-card rounded-lg"
-        />
+        <p className="text-sm text-muted-foreground">
+          Connect a Google Drive account — you'll be redirected to Google to
+          authorize DriveMerge.
+        </p>
       </div>
       <div>
-        <label className="block text-sm font-medium mb-1">
-          Total Space (GB)
-        </label>
-        <input
-          type="number"
-          value={total}
-          onChange={(e) => setTotal(Number(e.target.value))}
-          min={1}
-          className="w-full px-3 py-2 glass-card rounded-lg"
-        />
-      </div>
-      <div className="flex justify-end">
-        <button type="submit" className="btn-primary-glass">
-          Add Account
+        <button type="submit" className="btn-primary-glass w-full">
+          Connect Google Drive
         </button>
       </div>
     </form>

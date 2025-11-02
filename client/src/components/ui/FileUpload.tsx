@@ -377,7 +377,7 @@ export default function FileUpload({
                               .map((t) => t.split("/")[1])
                               .join(", ")
                               .toUpperCase()}`
-                          : "SVG, PNG, JPG or GIF"}{" "}
+                          : "Any file type"}{" "}
                         {maxFileSize && `up to ${formatBytes(maxFileSize)}`}
                       </p>
                     </div>

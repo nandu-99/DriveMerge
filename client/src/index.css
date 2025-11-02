@@ -118,6 +118,18 @@ All colors MUST be HSL.
     color: hsl(var(--foreground));
     min-height: 100vh;
   }
+
+  /* sensible default typography for a modern UI */
+  body,
+  input,
+  button,
+  textarea,
+  select {
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+      Roboto, "Helvetica Neue", Arial;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
 @layer utilities {
@@ -129,10 +141,13 @@ All colors MUST be HSL.
   }
 
   .glass-card {
-    border-radius: var(--radius);
-    padding: 0.75rem;
+    border-radius: calc(var(--radius) * 1.1);
+    padding: 1rem;
     background: hsl(var(--card));
     box-shadow: var(--shadow-elevated);
+    /* subtle translucent glass effect on supported browsers */
+    border: 1px solid hsl(var(--glass-border) / 0.6);
+    backdrop-filter: blur(6px) saturate(120%);
   }
 
   .glass-hover {
@@ -151,26 +166,73 @@ All colors MUST be HSL.
     padding: 0.75rem 1.5rem; /* py-3 px-6 */
     border-radius: 0.75rem; /* rounded-xl */
     font-weight: 500; /* font-medium */
-    transition: all 0.3s ease;
+    transition: transform 0.12s ease, box-shadow 0.12s ease,
+      background-color 0.12s ease;
   }
-
   .btn-glass:hover {
-    background-color: rgba(255, 255, 255, 0.6);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(16, 24, 40, 0.06);
   }
 
   .btn-glass:active {
-    transform: scale(0.95);
+    transform: translateY(0px) scale(0.995);
   }
 
   .btn-primary-glass {
     /* flat primary button */
-    padding: 0.5rem 1.25rem;
-    border-radius: 0.75rem;
+    padding: 0.6rem 1.25rem;
+    border-radius: 0.9rem;
     font-weight: 600;
     color: hsl(var(--primary-foreground));
-    background: hsl(var(--primary));
-    box-shadow: 0 6px 18px rgba(16, 24, 40, 0.06);
-    transition: box-shadow 0.15s ease, transform 0.12s ease;
+    background: linear-gradient(
+      180deg,
+      hsl(var(--primary)) 0%,
+      hsl(var(--primary)) 100%
+    );
+    box-shadow: 0 10px 30px rgba(16, 24, 40, 0.08);
+    transition: box-shadow 0.15s ease, transform 0.12s ease, filter 0.12s ease;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-primary-glass:hover {
+    filter: brightness(0.95);
+    transform: translateY(-2px);
+  }
+
+  .btn-primary-glass:focus {
+    outline: none;
+    box-shadow: 0 6px 18px rgba(34, 100, 255, 0.12);
+  }
+
+  .btn-primary-glass.w-full {
+    width: 100%;
+  }
+
+  .input-style {
+    width: 100%;
+    padding: 0.75rem 0.9rem;
+    border-radius: 0.7rem;
+    border: 1px solid hsl(var(--input));
+    background: hsl(var(--card));
+    color: hsl(var(--foreground));
+    box-shadow: 0 6px 20px rgba(16, 24, 40, 0.04);
+    transition: box-shadow 0.12s ease, border-color 0.12s ease,
+      transform 0.06s ease;
+  }
+
+  .input-style::placeholder {
+    color: hsl(var(--muted-foreground));
+    opacity: 0.9;
+  }
+
+  .input-style:focus {
+    outline: none;
+    box-shadow: 0 8px 30px color-mix(in srgb, hsl(var(--ring)) 15%, transparent);
+    border-color: hsl(var(--ring));
+    transform: translateY(-1px);
   }
 
   /* From Uiverse.io by vinodjangid07 — loading truck styles */
@@ -288,7 +350,7 @@ All colors MUST be HSL.
     justify-content: center;
     z-index: 60;
     /* subtle overlay to indicate loading state; adapts using color tokens */
-    background: rgba(255, 255, 255, 0.6);
+    background: color-mix(in srgb, hsl(var(--card)) 80%, transparent);
   }
 
   .dark .page-loader {

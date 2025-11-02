@@ -1,109 +1,182 @@
-import { User, Bell, Shield, Trash2 } from "lucide-react";
+import { Bell, Shield, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useEffect, useState } from "react";
+import { apiGet, apiFetch } from "@/lib/api";
 
 const Settings = () => {
   const { toast } = useToast();
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSave = () => {
-    toast({
-      title: "Settings saved!",
-      description: "Your preferences have been updated successfully.",
-    });
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const profile = await apiGet("/auth/me");
+        if (!mounted) return;
+        setEmail(profile?.email ?? "");
+        setName(profile?.name ?? "");
+      } catch (err) {
+        // ignore if unauthenticated
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      await apiFetch("/auth/me", { method: "PATCH", json: { name, email } });
+      toast({
+        title: "Settings saved!",
+        description: "Your profile was updated.",
+      });
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as Record<string, unknown>).message)
+          : "Failed to save";
+      toast({ title: "Save failed", description: message });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div className="glass-card p-6">
-        <h1 className="text-2xl font-bold mb-2">Settings</h1>
-        <p className="text-muted-foreground">
-          Manage your account and application preferences
-        </p>
-      </div>
-
-      {/* Account Settings */}
-      <div className="glass-card p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <User className="h-6 w-6 text-primary" />
-          <h2 className="text-xl font-semibold">Account Settings</h2>
+    <div className="min-h-[80vh] flex items-start justify-center py-12 px-4">
+      <div className="w-full max-w-3xl space-y-6">
+        <div className="text-center">
+          <h1 className="text-3xl font-semibold">Settings</h1>
+          <p className="text-sm text-muted-foreground mt-2">
+            Manage your account and application preferences
+          </p>
         </div>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Email</label>
-            <input
-              type="email"
-              defaultValue="user@example.com"
-              className="w-full px-4 py-2 glass-card rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-            />
+
+        {/* Account Card */}
+        <div className="glass-card p-6">
+          <div className="flex items-center gap-6">
+            <div className="flex-shrink-0">
+              <div className="h-20 w-20 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xl font-bold">
+                {(name || email || "").charAt(0) || "U"}
+              </div>
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-xl font-semibold">Account</h2>
+                <div className="text-sm text-muted-foreground">
+                  Member since —
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Display name
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="input-style"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="input-style"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Display Name</label>
-            <input
-              type="text"
-              defaultValue="John Doe"
-              className="w-full px-4 py-2 glass-card rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-            />
+        </div>
+
+        {/* Preferences */}
+        <div className="glass-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Bell className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-medium">Preferences</h3>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Notifications & alerts
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <label className="flex items-center justify-between cursor-pointer">
+              <span>Upload completion notifications</span>
+              <input type="checkbox" defaultChecked className="w-5 h-5" />
+            </label>
+            <label className="flex items-center justify-between cursor-pointer">
+              <span>Storage warnings</span>
+              <input type="checkbox" defaultChecked className="w-5 h-5" />
+            </label>
+            <label className="flex items-center justify-between cursor-pointer">
+              <span>Account connection alerts</span>
+              <input type="checkbox" className="w-5 h-5" />
+            </label>
           </div>
         </div>
-      </div>
 
-      {/* Notifications */}
-      <div className="glass-card p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <Bell className="h-6 w-6 text-primary" />
-          <h2 className="text-xl font-semibold">Notifications</h2>
-        </div>
-        <div className="space-y-4">
-          <label className="flex items-center justify-between cursor-pointer">
-            <span>Upload completion notifications</span>
-            <input type="checkbox" defaultChecked className="w-5 h-5" />
-          </label>
-          <label className="flex items-center justify-between cursor-pointer">
-            <span>Storage warnings</span>
-            <input type="checkbox" defaultChecked className="w-5 h-5" />
-          </label>
-          <label className="flex items-center justify-between cursor-pointer">
-            <span>Account connection alerts</span>
-            <input type="checkbox" className="w-5 h-5" />
-          </label>
-        </div>
-      </div>
+        {/* Security & Danger */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="glass-card p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Shield className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-medium">Security</h3>
+            </div>
+            <div className="space-y-3">
+              <button className="w-full btn-glass text-left">
+                Change Password
+              </button>
+              <button className="w-full btn-glass text-left">
+                Two-Factor Authentication
+              </button>
+              <button className="w-full btn-glass text-left">
+                Manage Connected Accounts
+              </button>
+            </div>
+          </div>
 
-      {/* Security */}
-      <div className="glass-card p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <Shield className="h-6 w-6 text-primary" />
-          <h2 className="text-xl font-semibold">Security</h2>
+          <div className="glass-card p-6 border-destructive/50">
+            <div className="flex items-center gap-3 mb-4">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              <h3 className="text-lg font-medium text-destructive">
+                Danger Zone
+              </h3>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Deleting your account is irreversible. This will remove all data
+              associated with your DriveMerge account.
+            </p>
+            <button className="w-full px-6 py-3 rounded-xl font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors">
+              Delete Account
+            </button>
+          </div>
         </div>
-        <div className="space-y-4">
-          <button className="w-full btn-glass text-left">
-            Change Password
+
+        <div className="flex items-center justify-end gap-4">
+          <button className="btn-glass">Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={loading}
+            className="btn-primary-glass"
+          >
+            {loading ? "Saving..." : "Save Changes"}
           </button>
-          <button className="w-full btn-glass text-left">
-            Two-Factor Authentication
-          </button>
-          <button className="w-full btn-glass text-left">
-            Manage Connected Accounts
-          </button>
         </div>
-      </div>
-
-      {/* Danger Zone */}
-      <div className="glass-card p-6 border-destructive/50">
-        <div className="flex items-center gap-3 mb-6">
-          <Trash2 className="h-6 w-6 text-destructive" />
-          <h2 className="text-xl font-semibold text-destructive">Danger Zone</h2>
-        </div>
-        <button className="w-full px-6 py-3 rounded-xl font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors">
-          Delete Account
-        </button>
-      </div>
-
-      {/* Save Button */}
-      <div className="flex justify-end gap-4">
-        <button className="btn-glass">Cancel</button>
-        <button onClick={handleSave} className="btn-primary-glass">
-          Save Changes
-        </button>
       </div>
     </div>
   );

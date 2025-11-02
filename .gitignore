@@ -1,1 +1,66 @@
-node_modules
+# Node
+node_modules/
+**/node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Vite / build outputs
+dist/
+.build/
+out/
+/.vite
+
+# Environment files
+.env
+.env.local
+.env.*.local
+server/.env
+client/.env
+
+# Prisma
+prisma/dev.db
+# keep migrations committed but ignore local dev dbs
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Editor directories and files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# macOS
+.DS_Store
+
+# Misc
+Thumbs.db
+coverage/
+coverage-final.json
+
+# Bun
+.bun/
+
+# Ignore compiled output and caches
+.cache/
+
+# Local OS files
+*.pid
+*.seed
+
+# Ignore local secrets/config
+.local/
+secret-*.json
+
+# Ignore JetBrains
+*.iml
+
+# Ignore lockfiles for other package managers if present
+.pnpm-debug.log
+
+# Do not ignore bun.lockb intentionally (keep it committed if present)

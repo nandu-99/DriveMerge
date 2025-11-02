@@ -126,21 +126,31 @@ export function AppSidebar() {
                   };
                   const used = Number(acct.used_space ?? 0);
                   const total = Number(acct.total_space ?? 15);
-                  const percentage = Math.round((used / total) * 100);
+                  const percentage = Math.max(
+                    0,
+                    Math.min(100, Math.round((used / total) * 100))
+                  );
                   return (
-                    <div key={acct.id} className="glass-card p-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <HardDrive className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-medium truncate">
-                          {acct.email}
-                        </span>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>{used} GB</span>
-                          <span>{percentage}%</span>
+                    <div
+                      key={acct.id}
+                      className="glass-card p-3 space-y-2 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        <HardDrive className="h-5 w-5 text-primary" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate">
+                            {acct.email}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {used} GB / {total} GB
+                          </div>
                         </div>
-                        <div className="h-1.5 bg-white/40 rounded-full overflow-hidden">
+                      </div>
+                      <div className="w-24 text-right">
+                        <div className="text-sm font-semibold">
+                          {percentage}%
+                        </div>
+                        <div className="h-2 bg-white/40 rounded-full overflow-hidden mt-1">
                           <div
                             className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all"
                             style={{ width: `${percentage}%` }}
