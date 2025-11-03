@@ -28,8 +28,8 @@ export default function ProtectedRoute({ children }: Props) {
         else setUser(null);
       } catch (err) {
         // invalid token or server failure
-        localStorage.removeItem("dm_token");
-        localStorage.removeItem("dm_user_id");
+        // localStorage.removeItem("dm_token");
+        // localStorage.removeItem("dm_user_id");
         setUser(null);
       } finally {
         if (mounted) setLoading(false);
