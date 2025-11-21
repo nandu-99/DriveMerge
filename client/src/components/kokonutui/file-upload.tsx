@@ -496,16 +496,21 @@ export default function FileUpload({
       dragCounter.current = 0;
       if (status === "uploading") return;
       setStatus("idle");
-      const droppedFile = e.dataTransfer.files?.[0];
-      if (droppedFile) handleFileSelect(droppedFile);
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        // iterate and handle each file
+        Array.from(files).forEach((f) => handleFileSelect(f));
+      }
     },
     [status, handleFileSelect]
   );
 
   const handleFileInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const selectedFile = e.target.files?.[0];
-      handleFileSelect(selectedFile || null);
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        Array.from(files).forEach((f) => handleFileSelect(f));
+      }
       if (e.target) e.target.value = "";
     },
     [handleFileSelect]
@@ -599,7 +604,7 @@ export default function FileUpload({
                       onClick={triggerFileInput}
                       className="w-4/5 flex items-center justify-center gap-2 rounded-lg bg-gray-100 dark:bg-white/10 px-4 py-2.5 text-sm font-semibold text-gray-900 dark:text-white transition-all duration-200 hover:bg-gray-200 dark:hover:bg-white/20 group"
                     >
-                      <span>Upload File</span>
+                      <span>Upload File(s)</span>
                       <UploadCloud className="w-4 h-4 group-hover:scale-110 transition-transform duration-200" />
                     </button>
 
@@ -614,6 +619,7 @@ export default function FileUpload({
                       onChange={handleFileInputChange}
                       accept={acceptedFileTypes?.join(",")}
                       aria-label="File input"
+                      multiple
                     />
                   </motion.div>
                 ) : status === "uploading" ? (
