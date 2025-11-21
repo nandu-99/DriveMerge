@@ -1,15 +1,38 @@
-import { motion } from "framer-motion";
-import { HardDrive, Package, Play, Pause, List } from "lucide-react";
-import { useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  HardDrive,
+  Package,
+  Play,
+  Pause,
+  List,
+  ArrowRight,
+  CheckCircle2,
+  Cloud,
+} from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
 import { useConnectedAccounts } from "@/hooks/use-connected-accounts";
 import { useUploads } from "@/context/uploads";
 import { UnderDevelopment } from "@/components/UnderDevelopment";
+import { cn } from "@/lib/utils";
+
+type TransferJob = {
+  uploadId: string;
+  fileName: string;
+  status: string;
+  totalBytes: number | null;
+  transferredBytes: number | null;
+  driveFileId: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 const Transfers = () => {
   const { data: accounts = [] } = useConnectedAccounts();
   const { uploads } = useUploads();
 
   const [running, setRunning] = useState(true);
+  const [jobs, setJobs] = useState<TransferJob[]>([]);
 
   const recentUpload = uploads?.[0] ?? null;
 
@@ -30,7 +53,10 @@ const Transfers = () => {
 
   const logs = useMemo(() => {
     if (!recentUpload) {
-      return ["No active uploads — drop a file on Home to start a transfer."];
+      if (jobs.length === 0) {
+        return ["No active uploads — drop a file on Home to start a transfer."];
+      }
+      return ["No active uploads."];
     }
 
     const prog = Math.round(recentUpload.progress);
@@ -41,203 +67,285 @@ const Transfers = () => {
       )})`,
       `Splitting file into ${chunks} chunks...`,
       `Allocating chunks to ${accounts.length} connected accounts...`,
-      `Uploading chunk ${Math.max(0, completedChunks)}/${chunks} to ${
-        accounts[0]?.email ?? "(pending)"
+      `Uploading chunk ${Math.max(0, completedChunks)}/${chunks} to ${accounts[0]?.email ?? "(pending)"
       }`,
       prog >= 100
         ? `Upload completed: ${recentUpload.name} (${prog}%)`
         : `Progress: ${prog}%`,
     ];
-  }, [recentUpload, chunks, accounts]);
+  }, [recentUpload, chunks, accounts, jobs.length]);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const token = localStorage.getItem("dm_token");
+        const res = await fetch(`/drive/transfers`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setJobs(data.jobs || []);
+      } catch (e) {
+        console.debug("fetch transfers failed", e);
+      }
+    };
+    fetchHistory();
+  }, []);
 
   return (
-    <div className="space-y-6">
-      <UnderDevelopment/>
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 max-w-6xl mx-auto">
+      <UnderDevelopment />
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Transfers</h1>
-          <p className="text-sm text-muted-foreground">
-            Live visualization of your ongoing transfers
+          <h1 className="text-3xl font-bold tracking-tight">Transfers</h1>
+          <p className="text-muted-foreground mt-1">
+            Real-time visualization of your data distribution
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <button
             onClick={() => setRunning((s) => !s)}
-            className="inline-flex items-center gap-2 btn-glass px-4 py-2"
-            aria-pressed={running}
+            className={cn(
+              "inline-flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all duration-200",
+              running
+                ? "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border border-amber-500/20"
+                : "bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20"
+            )}
           >
             {running ? (
               <Pause className="h-4 w-4" />
             ) : (
               <Play className="h-4 w-4" />
             )}
-            <span>{running ? "Pause" : "Start"}</span>
-          </button>
-          <button className="inline-flex items-center gap-2 btn-primary-glass px-4 py-2">
-            <List className="h-4 w-4" />
-            View All Logs
+            <span>{running ? "Pause Visualization" : "Resume"}</span>
           </button>
         </div>
       </div>
 
-      {/* Visualization Area */}
-      <div className="glass-card p-6 min-h-[48vh]">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center h-full">
-          {/* Source File (shows active upload) */}
-          <motion.div
-            initial={{ scale: 0.9 }}
-            animate={{ scale: 1 }}
-            className="md:col-span-3 flex flex-col items-center gap-4"
-          >
-            <div className="glass-card p-6 rounded-xl flex flex-col items-center justify-center w-44 h-44">
-              <Package className="h-12 w-12 text-primary mb-2" />
-              <div className="w-28 text-center">
-                <p className="text-sm font-medium truncate">
-                  {recentUpload ? recentUpload.name : "No active upload"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {recentUpload
-                    ? `${formatBytes(recentUpload.size)} • ${chunks} chunks`
-                    : "—"}
-                </p>
-              </div>
+      {/* Main Visualization Area */}
+      <div className="glass-card p-8 min-h-[500px] relative overflow-hidden group">
+        {/* Background Grid Effect */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] pointer-events-none" />
 
-              {/* progress ring / bar */}
-              <div className="mt-3 w-full">
-                <div className="h-2 bg-white/8 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{
-                      width: `${
-                        recentUpload
-                          ? Math.min(100, Math.round(recentUpload.progress))
-                          : 0
-                      }%`,
-                    }}
-                    transition={{ ease: "linear", duration: 0.2 }}
-                    className="h-full bg-gradient-to-r from-primary to-accent"
-                  />
+        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center h-full">
+
+          {/* Source: The File */}
+          <div className="lg:col-span-3 flex flex-col items-center justify-center">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="relative"
+            >
+              <div className={cn(
+                "w-48 h-48 rounded-2xl glass-card flex flex-col items-center justify-center p-6 border-2 transition-colors duration-300",
+                recentUpload ? "border-primary/50 bg-primary/5" : "border-dashed border-muted"
+              )}>
+                <div className="relative">
+                  <Package className={cn(
+                    "h-16 w-16 mb-4 transition-colors duration-300",
+                    recentUpload ? "text-primary" : "text-muted"
+                  )} />
+                  {recentUpload && (
+                    <motion.div
+                      className="absolute -inset-4 rounded-full bg-primary/20 blur-xl"
+                      animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                    />
+                  )}
                 </div>
-                <div className="mt-2 text-xs text-center text-muted-foreground">
-                  {recentUpload ? `${Math.round(recentUpload.progress)}%` : ""}
+
+                <div className="text-center w-full">
+                  <p className="font-semibold truncate w-full px-2">
+                    {recentUpload ? recentUpload.name : "No Active Upload"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {recentUpload
+                      ? `${formatBytes(recentUpload.size)} • ${chunks} chunks`
+                      : "Waiting for file..."}
+                  </p>
                 </div>
+
+                {recentUpload && (
+                  <div className="w-full mt-4 space-y-1">
+                    <div className="flex justify-between text-[10px] font-medium text-muted-foreground">
+                      <span>Progress</span>
+                      <span>{Math.round(recentUpload.progress)}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-muted/30 rounded-full overflow-hidden">
+                      <motion.div
+                        className="h-full bg-primary"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${recentUpload.progress}%` }}
+                        transition={{ type: "spring", stiffness: 50 }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </div>
 
-          {/* Transfer Animation Area */}
-          <div className="md:col-span-6 relative flex flex-col items-center justify-center">
-            <div className="w-full h-2 rounded-full bg-white/10 mb-6 overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{
-                  width: `${
-                    recentUpload
-                      ? Math.min(100, Math.round(recentUpload.progress))
-                      : running
-                      ? 100
-                      : 0
-                  }%`,
-                }}
-                transition={{ duration: 0.4 }}
-                className="h-full bg-gradient-to-r from-primary to-accent"
-              />
-            </div>
-
-            <div className="relative flex justify-center gap-4">
-              {[...Array(6)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ y: -20, opacity: 0 }}
-                  animate={
-                    running
-                      ? { y: [0, -24, 0], opacity: [0, 1, 0] }
-                      : { y: 0, opacity: 0.6 }
-                  }
-                  transition={{
-                    duration: 2 + i * 0.2,
-                    delay: i * 0.15,
-                    repeat: running ? Infinity : 0,
-                    repeatDelay: 0.6,
-                  }}
-                  className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent shadow-md"
+          {/* Middle: The Pipeline */}
+          <div className="lg:col-span-6 relative h-full min-h-[200px] flex flex-col items-center justify-center">
+            {/* Connection Lines */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <svg className="w-full h-20 overflow-visible">
+                <defs>
+                  <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.1" />
+                    <stop offset="50%" stopColor="hsl(var(--primary))" stopOpacity="0.5" />
+                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0.1" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M0,40 C150,40 150,40 300,40 S450,40 600,40"
+                  fill="none"
+                  stroke="url(#lineGradient)"
+                  strokeWidth="2"
+                  className="w-full"
                 />
-              ))}
+              </svg>
             </div>
 
-            <div className="mt-6 text-sm text-muted-foreground">
-              {recentUpload
-                ? `Transferring ${recentUpload.name} — ${Math.round(
-                    recentUpload.progress
-                  )}%`
-                : "Transferring chunks to destination accounts"}
+            {/* Flying Chunks Animation */}
+            <div className="relative w-full h-24 flex items-center overflow-hidden">
+              <AnimatePresence>
+                {running && (recentUpload || jobs.length > 0) && [...Array(5)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="absolute left-0 flex items-center gap-2"
+                    initial={{ x: -50, opacity: 0, scale: 0.5 }}
+                    animate={{
+                      x: "120%",
+                      opacity: [0, 1, 1, 0],
+                      scale: [0.5, 1, 1, 0.5]
+                    }}
+                    transition={{
+                      duration: 2.5,
+                      repeat: Infinity,
+                      delay: i * 0.5,
+                      ease: "easeInOut"
+                    }}
+                  >
+                    <div className="h-8 w-12 rounded bg-primary/20 border border-primary/40 backdrop-blur-sm flex items-center justify-center shadow-lg shadow-primary/10">
+                      <div className="w-6 h-0.5 bg-primary/40 rounded-full" />
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+
+            <div className="mt-8 text-center">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-background/50 border border-border/50 backdrop-blur-md text-xs font-medium text-muted-foreground">
+                {recentUpload ? (
+                  <>
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                    </span>
+                    Processing Chunks
+                  </>
+                ) : (
+                  "System Idle"
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Destination Accounts */}
-          <div className="md:col-span-3 flex flex-col gap-4">
-            {accounts.map((account, index) => (
-              <motion.div
-                key={account.id}
-                initial={{ x: 50, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                transition={{ delay: index * 0.15 }}
-                className="glass-card p-4 rounded-xl"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <HardDrive className="h-7 w-7 text-primary" />
-                  <div className="flex-1">
-                    <p className="font-medium text-sm truncate">
-                      {account.email}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {account.used_space || account.total_space
-                        ? `${formatBytes(
-                            account.used_space || 0
-                          )} / ${formatBytes(account.total_space || 0)}`
-                        : "—"}
-                    </p>
+          {/* Destination: Accounts */}
+          <div className="lg:col-span-3 flex flex-col gap-4 h-full justify-center">
+            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+              {accounts.map((account, index) => (
+                <motion.div
+                  key={account.id}
+                  initial={{ x: 20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="glass-card p-4 rounded-xl group/card hover:border-primary/30 transition-colors"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 rounded-lg bg-secondary text-secondary-foreground">
+                      <Cloud className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate" title={account.email}>
+                        {account.email}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {account.provider.toUpperCase()}
+                      </p>
+                    </div>
+                    {recentUpload && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="h-2 w-2 rounded-full bg-green-500"
+                      />
+                    )}
                   </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[10px] text-muted-foreground">
+                      <span>Storage</span>
+                      <span>
+                        {account.used_space && account.total_space
+                          ? `${Math.round((account.used_space / account.total_space) * 100)}%`
+                          : "0%"}
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-secondary/50 rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{
+                          width: `${Math.min(
+                            100,
+                            account.total_space
+                              ? (account.used_space / Math.max(1, account.total_space)) * 100
+                              : 0
+                          )}%`,
+                        }}
+                        transition={{ duration: 1.5, ease: "easeOut" }}
+                        className="h-full bg-gradient-to-r from-primary to-accent"
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+
+              {accounts.length === 0 && (
+                <div className="text-center p-6 border-2 border-dashed border-muted rounded-xl">
+                  <p className="text-sm text-muted-foreground">No accounts connected</p>
                 </div>
-                <div className="h-2 bg-white/8 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{
-                      width: `${Math.min(
-                        100,
-                        account.total_space
-                          ? (account.used_space /
-                              Math.max(1, account.total_space)) *
-                              100
-                          : 0
-                      )}%`,
-                    }}
-                    transition={{ duration: 2 }}
-                    className="h-full bg-gradient-to-r from-primary to-accent"
-                  />
-                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Logs Section */}
+      <div className="glass-card p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <List className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Activity Log</h2>
+        </div>
+        <div className="space-y-2 font-mono text-xs sm:text-sm max-h-40 overflow-y-auto custom-scrollbar">
+          <AnimatePresence mode="popLayout">
+            {logs.map((log, i) => (
+              <motion.div
+                key={`${i}-${log}`}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="flex items-start gap-2 text-muted-foreground p-2 rounded hover:bg-white/5 transition-colors"
+              >
+                <span className="text-primary mt-0.5">›</span>
+                <span>{log}</span>
               </motion.div>
             ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Transfer Log */}
-      <div className="glass-card p-6">
-        <h2 className="text-lg font-semibold mb-4">Transfer Log</h2>
-        <div className="space-y-2 max-h-52 overflow-y-auto">
-          {logs.map((log, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.04 }}
-              className="text-sm text-muted-foreground font-mono p-2 rounded bg-white/4"
-            >
-              {log}
-            </motion.div>
-          ))}
+          </AnimatePresence>
         </div>
       </div>
     </div>

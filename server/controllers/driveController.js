@@ -1,11 +1,29 @@
 const { PrismaClient } = require("@prisma/client");
+const { generatePreviewToken } = require("../utils/jwt");
 const { getDriveClient } = require("../utils/googleDrive");
 const { google } = require("googleapis");
 const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
 const multer = require("multer");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
+const sharp = require("sharp");
+let s3Client = null;
+let S3_BUCKET = process.env.S3_THUMBNAIL_BUCKET || process.env.S3_BUCKET || null;
+const S3_REGION = process.env.S3_REGION || null;
+const S3_PREFIX = process.env.S3_THUMBNAIL_PREFIX || "thumbnails/";
+const THUMB_TTL_DAYS = Number(process.env.THUMB_TTL_DAYS || 7);
+try {
+  if (S3_BUCKET && S3_REGION) {
+    const { S3Client, PutObjectCommand, HeadObjectCommand, ListObjectsV2Command, DeleteObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+    const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+    s3Client = new S3Client({ region: S3_REGION });
+    exports._s3Helpers = { S3Client, PutObjectCommand, HeadObjectCommand, ListObjectsV2Command, DeleteObjectCommand, GetObjectCommand, getSignedUrl };
+  }
+} catch (e) {
+  console.warn("S3 client not available, skipping S3 thumbnail support:", e && e.message);
+}
 const prisma = new PrismaClient();
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -13,8 +31,6 @@ const oauth2Client = new google.auth.OAuth2(
   `${process.env.BACKEND_URL}/auth/callback`
 );
 
-// Configure multer to use disk storage for large uploads (safer than memory)
-// Default max upload size set to 20 GB unless overridden by MAX_UPLOAD_BYTES env
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES) || 20 * 1024 ** 3; // 20 GB default
 const upload = multer({
   storage: multer.diskStorage({
@@ -24,7 +40,6 @@ const upload = multer({
   limits: { fileSize: MAX_UPLOAD_BYTES },
 });
 const progressMap = new Map();
-// simple in-memory recent uploads store (debugging aid)
 const recentUploads = [];
 
 const getAuthUrl = async (req, res) => {
@@ -176,30 +191,85 @@ const uploadFiles = [
 
       const tasks = [];
 
+      const preferredAccountId = req.body?.driveAccountId || req.query?.driveAccountId;
+
       for (const file of req.files) {
-        const fileSizeGb = file.size / 1024 ** 3;
-
-        const suitableAccount = accounts
-          .filter((a) => {
-            const hasSpace = a.usedSpaceGb + fileSizeGb <= a.totalSpaceGb;
-            return hasSpace;
-          })
-          .sort(
-            (a, b) =>
-              b.totalSpaceGb - b.usedSpaceGb - (a.totalSpaceGb - a.usedSpaceGb)
-          )
-          .shift();
-
-        if (!suitableAccount) {
-          return res.status(400).json({
-            message: `No account has enough space for ${file.originalname}`,
+        let fileHash = null;
+        if (file.path) {
+          fileHash = await new Promise((resolve, reject) => {
+            const hash = crypto.createHash('sha256');
+            const rs = fs.createReadStream(file.path);
+            rs.on('data', (chunk) => hash.update(chunk));
+            rs.on('end', () => resolve(hash.digest('hex')));
+            rs.on('error', reject);
           });
         }
 
         const uploadId = uuidv4();
 
+        if (fileHash) {
+          const existing = await prisma.file.findFirst({
+            where: { userId, fileHash, sizeBytes: BigInt(file.size) },
+          });
+          if (existing) {
+            await prisma.transferJob.create({
+              data: {
+                uploadId,
+                userId,
+                fileName: file.originalname,
+                status: 'succeeded',
+                totalBytes: BigInt(file.size),
+                transferredBytes: BigInt(file.size),
+                driveFileId: existing.driveFileId,
+              },
+            });
+            tasks.push({ id: uploadId, fileName: file.originalname, duplicate: true, existingFileId: existing.driveFileId });
+            continue;
+          }
+        }
+
+        let suitableAccount = null;
+        if (preferredAccountId) {
+          suitableAccount = accounts.find(a => String(a.id) === String(preferredAccountId));
+          if (!suitableAccount) return res.status(400).json({ message: 'Preferred account not found or not owned by user' });
+        }
+
+        if (!suitableAccount) {
+          const fileSizeGb = file.size / 1024 ** 3;
+          suitableAccount = accounts
+            .filter((a) => {
+              const hasSpace = a.usedSpaceGb + fileSizeGb <= a.totalSpaceGb;
+              return hasSpace;
+            })
+            .sort(
+              (a, b) =>
+                b.totalSpaceGb - b.usedSpaceGb - (a.totalSpaceGb - a.usedSpaceGb)
+            )
+            .shift();
+
+          if (!suitableAccount) {
+            return res.status(400).json({
+              message: `No account has enough space for ${file.originalname}`,
+            });
+          }
+        }
+
         tasks.push({ id: uploadId, fileName: file.originalname });
         progressMap.set(uploadId, { progress: 0, res: null });
+
+        await prisma.transferJob.create({
+          data: {
+            uploadId,
+            userId,
+            fileName: file.originalname,
+            status: 'pending',
+            totalBytes: BigInt(file.size),
+            sourceAccountId: null,
+            destAccountId: suitableAccount.id,
+          },
+        });
+
+        file._fileHash = fileHash;
 
         setImmediate(() => {
           uploadToDrive(uploadId, file, suitableAccount, userId).catch(
@@ -221,10 +291,215 @@ const uploadFiles = [
   },
 ];
 
+const THUMB_DIR = path.join(process.cwd(), "tmp", "thumbnails");
+try {
+  fs.mkdirSync(THUMB_DIR, { recursive: true });
+} catch (e) {
+  console.warn("Could not create thumbnail cache dir:", e && e.message);
+}
+
+function svgPlaceholder(name, width = 400, height = 300) {
+  const safe = String(name || "").replace(/</g, "&lt;").slice(0, 40);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+    <svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}'>
+      <rect width='100%' height='100%' fill='#f3f4f6' />
+      <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='#9ca3af' font-family='Arial,Helvetica,sans-serif' font-size='18'>${safe}</text>
+    </svg>`;
+}
+
+// GET /drive/files/thumbnail?id=...&size=200
+const getThumbnail = async (req, res) => {
+  const { id, size = 400, preview_token: previewToken } = req.query;
+  if (!id) return res.status(400).json({ message: "Missing file id" });
+
+  try {
+    let userId = null;
+    let tokenPayload = null;
+    if (req.user && req.user.id) {
+      userId = req.user.id;
+    } else if (previewToken) {
+      try {
+        tokenPayload = require("../utils/jwt").verifyToken(previewToken);
+        if (tokenPayload && tokenPayload.id) userId = tokenPayload.id;
+      } catch (e) {
+        // ignore
+      }
+    }
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const fileRec = await prisma.file.findUnique({ where: { driveFileId: id } });
+    if (!fileRec || fileRec.userId !== userId) {
+      return res.status(404).json({ message: "File not found or not owned by user" });
+    }
+
+    if (tokenPayload && tokenPayload.t === "preview") {
+      if (tokenPayload.fileId !== id || tokenPayload.id !== userId) {
+        return res.status(401).json({ message: "Invalid preview token for this file" });
+      }
+    }
+
+    const thumbPath = path.join(THUMB_DIR, `${id}-${size}.jpg`);
+
+    if (s3Client && S3_BUCKET) {
+      const { HeadObjectCommand, PutObjectCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjectCommand, getSignedUrl } = exports._s3Helpers;
+      const key = `${S3_PREFIX}${id}-${size}.jpg`;
+      try {
+        await s3Client.send(new HeadObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+        const url = await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }), { expiresIn: 300 });
+        return res.redirect(url);
+      } catch (headErr) {
+      }
+    }
+
+    const accounts = await prisma.driveAccount.findMany({ where: { userId } });
+    let streamed = false;
+    for (const account of accounts) {
+      try {
+        const auth = new google.auth.OAuth2(
+          process.env.GOOGLE_CLIENT_ID,
+          process.env.GOOGLE_CLIENT_SECRET
+        );
+        auth.setCredentials({ refresh_token: account.refreshToken });
+        const accessResp = await auth.getAccessToken();
+        const a_token = accessResp && typeof accessResp === "object" ? accessResp.token : accessResp;
+        if (!a_token) continue;
+        auth.setCredentials({ access_token: a_token });
+        const drive = google.drive({ version: "v3", auth });
+
+        const meta = await drive.files.get({ fileId: id, fields: "id,name,mimeType,size,thumbnailLink" });
+        const mime = meta.data.mimeType || "application/octet-stream";
+
+        if (!mime.startsWith("image/")) {
+          const svg = svgPlaceholder(meta.data.name || id, size, Math.round(size * 0.75));
+          res.setHeader("Content-Type", "image/svg+xml");
+          res.send(svg);
+          return;
+        }
+
+        const streamResp = await drive.files.get({ fileId: id, alt: "media" }, { responseType: "stream" });
+        await new Promise((resolve, reject) => {
+          const transformer = sharp().resize({ width: Number(size), withoutEnlargement: true }).jpeg({ quality: 80 });
+          const outStream = fs.createWriteStream(thumbPath);
+          streamResp.data.pipe(transformer).pipe(outStream);
+          outStream.on("finish", resolve);
+          outStream.on("error", reject);
+          streamResp.data.on("error", reject);
+        });
+
+        if (s3Client && S3_BUCKET && fs.existsSync(thumbPath)) {
+          try {
+            const { PutObjectCommand, GetObjectCommand, getSignedUrl } = exports._s3Helpers;
+            const key = `${S3_PREFIX}${id}-${size}.jpg`;
+            const body = fs.readFileSync(thumbPath);
+            await s3Client.send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: key, Body: body, ContentType: 'image/jpeg' }));
+            const url = await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }), { expiresIn: 300 });
+            return res.redirect(url);
+          } catch (s3Err) {
+            console.warn('Failed to upload thumbnail to S3, serving locally:', s3Err && s3Err.message);
+          }
+        }
+
+        if (fs.existsSync(thumbPath)) {
+          res.setHeader("Content-Type", "image/jpeg");
+          const stat = fs.statSync(thumbPath);
+          res.setHeader("Content-Length", stat.size);
+          fs.createReadStream(thumbPath).pipe(res);
+          streamed = true;
+          return;
+        }
+      } catch (err) {
+        console.warn("getThumbnail: account failed", account.email, err && err.message);
+        continue;
+      }
+    }
+
+    if (!streamed) {
+      const svg = svgPlaceholder(id, size, Math.round(size * 0.75));
+      res.setHeader("Content-Type", "image/svg+xml");
+      res.send(svg);
+    }
+  } catch (err) {
+    console.error("getThumbnail error:", err);
+    if (!res.headersSent) res.status(500).json({ message: "Failed to generate thumbnail" });
+  }
+};
+
+async function cleanupS3Thumbnails() {
+  if (!s3Client || !S3_BUCKET) return;
+  try {
+    const { ListObjectsV2Command, DeleteObjectCommand } = exports._s3Helpers;
+    const listResp = await s3Client.send(new ListObjectsV2Command({ Bucket: S3_BUCKET, Prefix: S3_PREFIX, MaxKeys: 1000 }));
+    const now = Date.now();
+    const toDelete = [];
+    (listResp.Contents || []).forEach((obj) => {
+      if (!obj.LastModified) return;
+      const ageDays = (now - new Date(obj.LastModified).getTime()) / (1000 * 60 * 60 * 24);
+      if (ageDays > THUMB_TTL_DAYS) {
+        toDelete.push(obj.Key);
+      }
+    });
+    for (const key of toDelete) {
+      try {
+        await s3Client.send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+      } catch (e) {
+        console.warn('Failed to delete old thumbnail', key, e && e.message);
+      }
+    }
+  } catch (e) {
+    console.warn('cleanupS3Thumbnails error', e && e.message);
+  }
+}
+
+try {
+  if (s3Client && S3_BUCKET) {
+    setInterval(() => {
+      cleanupS3Thumbnails().catch((e) => console.warn('cleanup failed', e && e.message));
+    }, 1000 * 60 * 60 * 24); // daily
+    // also run once shortly after startup
+    setTimeout(() => cleanupS3Thumbnails().catch(() => { }), 5000);
+  }
+} catch (e) {
+  // ignore
+}
+
+async function cleanupLocalThumbnails() {
+  try {
+    const files = fs.readdirSync(THUMB_DIR || ".");
+    const now = Date.now();
+    for (const fname of files) {
+      try {
+        const full = path.join(THUMB_DIR, fname);
+        const stat = fs.statSync(full);
+        const ageDays = (now - stat.mtimeMs) / (1000 * 60 * 60 * 24);
+        if (ageDays > THUMB_TTL_DAYS) {
+          fs.unlinkSync(full);
+        }
+      } catch (e) {
+        // ignore per-file errors
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+try {
+  setInterval(() => {
+    cleanupLocalThumbnails().catch(() => { });
+  }, 1000 * 60 * 60 * 24); // daily
+  setTimeout(() => cleanupLocalThumbnails().catch(() => { }), 5000);
+} catch (e) { }
+
 const uploadToDrive = async (uploadId, file, account, userId) => {
   try {
     if (!account.refreshToken) {
       throw new Error("Missing refresh token");
+    }
+
+    try {
+      await prisma.transferJob.update({ where: { uploadId }, data: { status: 'in_progress' } });
+    } catch (e) {
+      // ignore if no job found
     }
 
     const auth = new google.auth.OAuth2(
@@ -232,11 +507,7 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
       process.env.GOOGLE_CLIENT_SECRET
     );
 
-    // Use the stored refresh token to obtain a fresh access token
     auth.setCredentials({ refresh_token: account.refreshToken });
-
-    // googleapis may expose different helpers depending on version; using getAccessToken
-    // will automatically refresh if needed. Some versions return an object, some a string.
     const accessResp = await auth.getAccessToken();
     const access_token =
       accessResp && typeof accessResp === "object"
@@ -250,7 +521,6 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
     auth.setCredentials({ access_token });
     const drive = google.drive({ version: "v3", auth });
 
-    // For disk storage, stream from the temp file and track progress
     const filePath = file.path || (file.buffer && null);
     let fileSize = file.size;
 
@@ -260,7 +530,6 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
       fileSize = stat.size;
       readStream = fs.createReadStream(filePath);
     } else if (file.buffer) {
-      // fallback (shouldn't happen with diskStorage)
       readStream = require("stream").Readable.from(file.buffer);
     } else {
       throw new Error("No file data available for upload");
@@ -278,6 +547,11 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
         entry.res.write(`data: ${JSON.stringify({ progress })}\n\n`);
       }
       pass.write(chunk);
+
+      // update transferredBytes in DB (best-effort, non-blocking)
+      try {
+        prisma.transferJob.update({ where: { uploadId }, data: { transferredBytes: BigInt(uploaded) } }).catch(() => { });
+      } catch (e) { }
     });
 
     readStream.on("end", () => pass.end());
@@ -291,7 +565,6 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
     const response = await drive.files.create({
       requestBody: {
         name: file.originalname,
-        // tag file so we can identify files uploaded by this app/user later
         appProperties: {
           uploaderId: String(userId),
           uploaderApp: "DriveMerge",
@@ -328,11 +601,17 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
             name: file.originalname,
             mime: response.data.mimeType || file.mimetype || null,
             sizeBytes: BigInt(fileSize),
+            fileHash: file._fileHash ?? null,
           },
         });
       } catch (dbErr) {
         console.warn("Failed to persist file metadata:", dbErr && dbErr.message);
       }
+
+      // mark TransferJob succeeded
+      try {
+        await prisma.transferJob.update({ where: { uploadId }, data: { status: 'succeeded', driveFileId } });
+      } catch (e) { }
     } catch (e) {
       console.warn("Failed to record recent upload debug info", e && e.message);
     }
@@ -411,8 +690,7 @@ const listFiles = async (req, res) => {
         auth.setCredentials({ access_token });
         const drive = google.drive({ version: "v3", auth });
 
-        // Only list files we uploaded on behalf of this user (we tag with appProperties.uploaderId)
-        const q = `trashed = false and appProperties has { key = 'uploaderId' and value = '${userId}' }`;
+        const q = `appProperties has { key='uploaderId' and value='${userId}' }`;
 
         const resp = await drive.files.list({
           q,
@@ -428,6 +706,7 @@ const listFiles = async (req, res) => {
           size: Number(f.size || 0),
           modifiedAt: f.modifiedTime,
           accountEmail: account.email,
+          thumbnailUrl: `/drive/files/thumbnail?id=${encodeURIComponent(f.id)}&size=240`,
         }));
 
         allFiles.push(...files);
@@ -476,6 +755,7 @@ const getFiles = async (req, res) => {
       mime: f.mime,
       size: Number(f.sizeBytes || 0),
       modifiedAt: f.createdAt,
+      thumbnailUrl: `/drive/files/thumbnail?id=${encodeURIComponent(f.driveFileId)}&size=240`,
     }));
     res.json({ files: out });
     return;
@@ -493,80 +773,124 @@ const getFiles = async (req, res) => {
 };
 
 const downloadFile = async (req, res) => {
-  const { id } = req.query;
+  const { id, preview, access_token: accessTokenQuery } = req.query;
   if (!id) return res.status(400).json({ message: "Missing file id" });
 
   try {
-    const userId = req.user.id;
-
-    // Ensure the file exists in our DB and belongs to the user
-    const fileRec = await prisma.file.findUnique({ where: { driveFileId: id } });
-    if (!fileRec || fileRec.userId !== userId) {
-      return res.status(404).json({ message: "File not found or not owned by user" });
-    }
-
-    // Try the drive account we stored for the file first
-    if (fileRec.driveAccountId) {
-      const acc = await prisma.driveAccount.findUnique({ where: { id: fileRec.driveAccountId } });
-      if (acc && acc.refreshToken) {
-        try {
-          const auth = new google.auth.OAuth2(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET
-          );
-          auth.setCredentials({ refresh_token: acc.refreshToken });
-          const accessResp = await auth.getAccessToken();
-          const access_token = accessResp && typeof accessResp === "object" ? accessResp.token : accessResp;
-          if (access_token) {
-            auth.setCredentials({ access_token });
-            const drive = google.drive({ version: 'v3', auth });
-            const meta = await drive.files.get({ fileId: id, fields: 'id,name,mimeType,size' });
-            res.setHeader('Content-Type', meta.data.mimeType || 'application/octet-stream');
-            res.setHeader('Content-Disposition', `attachment; filename="${meta.data.name || id}"`);
-            const streamResp = await drive.files.get({ fileId: id, alt: 'media' }, { responseType: 'stream' });
-            streamResp.data.pipe(res);
-            return;
-          }
-        } catch (err) {
-          console.warn('downloadFile via stored account failed, falling back:', err && err.message);
-        }
+    let userId = null;
+    let tokenPayload = null;
+    if (req.user && req.user.id) {
+      userId = req.user.id;
+    } else if (accessTokenQuery || req.query?.preview_token) {
+      const tokenToVerify = req.query?.preview_token || accessTokenQuery;
+      try {
+        tokenPayload = require("../utils/jwt").verifyToken(tokenToVerify);
+        if (tokenPayload && tokenPayload.id) userId = tokenPayload.id;
+      } catch (e) {
+        // ignore
       }
     }
 
-    // Fallback: try any connected account of the user
-    const accounts = await prisma.driveAccount.findMany({ where: { userId } });
-    for (const account of accounts) {
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const fileRec = await prisma.file.findUnique({ where: { driveFileId: id } });
+
+    // If not in DB, we can still try to find it in the user's connected accounts
+    // This handles cases where the DB is out of sync or the file was uploaded externally
+    if (fileRec && fileRec.userId !== userId) {
+      return res.status(404).json({ message: "File not found or not owned by user" });
+    }
+
+    if (tokenPayload && tokenPayload.t === "preview") {
+      if (tokenPayload.fileId !== id || tokenPayload.id !== userId) {
+        return res.status(401).json({ message: "Invalid preview token for this file" });
+      }
+    }
+
+    // Helper to stream from a Drive account with optional Range support
+    const tryStreamFromAccount = async (acc) => {
+      if (!acc || !acc.refreshToken) return false;
       try {
         const auth = new google.auth.OAuth2(
           process.env.GOOGLE_CLIENT_ID,
           process.env.GOOGLE_CLIENT_SECRET
         );
-        auth.setCredentials({ refresh_token: account.refreshToken });
+        auth.setCredentials({ refresh_token: acc.refreshToken });
         const accessResp = await auth.getAccessToken();
-        const access_token =
-          accessResp && typeof accessResp === "object"
-            ? accessResp.token
-            : accessResp;
-        if (!access_token) continue;
-        auth.setCredentials({ access_token });
-        const drive = google.drive({ version: "v3", auth });
+        const latest_access = accessResp && typeof accessResp === "object" ? accessResp.token : accessResp;
+        if (!latest_access) return false;
+        auth.setCredentials({ access_token: latest_access });
+        const drive = google.drive({ version: 'v3', auth });
 
         const meta = await drive.files.get({ fileId: id, fields: 'id,name,mimeType,size' });
-        res.setHeader('Content-Type', meta.data.mimeType || 'application/octet-stream');
-        res.setHeader('Content-Disposition', `attachment; filename="${meta.data.name || id}"`);
+        const size = Number(meta.data.size || 0);
+        const mime = meta.data.mimeType || 'application/octet-stream';
+
+        const rangeHeader = req.headers.range;
+        const inline = preview === '1' || preview === 'true';
+
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Content-Type', mime);
+        if (inline) {
+          res.setHeader('Content-Disposition', `inline; filename="${meta.data.name || id}"`);
+        } else {
+          res.setHeader('Content-Disposition', `attachment; filename="${meta.data.name || id}"`);
+        }
+
+        if (rangeHeader) {
+          // parse range, e.g., 'bytes=0-1023'
+          const m = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
+          if (m) {
+            const start = m[1] ? parseInt(m[1], 10) : 0;
+            const end = m[2] ? parseInt(m[2], 10) : size - 1;
+            const clampedEnd = Math.min(end, size - 1);
+            const chunkSize = clampedEnd - start + 1;
+            res.status(206);
+            res.setHeader('Content-Range', `bytes ${start}-${clampedEnd}/${size}`);
+            res.setHeader('Content-Length', String(chunkSize));
+
+            const streamResp = await drive.files.get(
+              { fileId: id, alt: 'media' },
+              { responseType: 'stream', headers: { Range: `bytes=${start}-${clampedEnd}` } }
+            );
+            streamResp.data.pipe(res);
+            return true;
+          }
+        }
+
+        // No range requested — stream whole file
+        res.setHeader('Content-Length', String(size));
         const streamResp = await drive.files.get({ fileId: id, alt: 'media' }, { responseType: 'stream' });
         streamResp.data.pipe(res);
-        return;
+        return true;
       } catch (err) {
-        console.warn('downloadFile try next account for id', id, 'error:', err.message || err);
-        continue;
+        console.warn('tryStreamFromAccount failed for', acc.email, err && err.message);
+        return false;
       }
+    };
+
+    if (fileRec && fileRec.driveAccountId) {
+      const acc = await prisma.driveAccount.findUnique({ where: { id: fileRec.driveAccountId } });
+      if (acc) {
+        const ok = await tryStreamFromAccount(acc);
+        if (ok) return;
+      }
+    }
+
+    // Fallback: loop connected accounts
+    const accounts = await prisma.driveAccount.findMany({ where: { userId } });
+    for (const account of accounts) {
+      const ok = await tryStreamFromAccount(account);
+      if (ok) return;
     }
 
     res.status(404).json({ message: 'File not found in connected accounts' });
   } catch (err) {
     console.error("downloadFile error:", err);
-    res.status(500).json({ message: "Failed to download file" });
+    // If headers already sent, can't send JSON
+    if (!res.headersSent) res.status(500).json({ message: "Failed to download file" });
   }
 };
 
@@ -581,6 +905,77 @@ const debugRecentUploads = async (req, res) => {
   }
 };
 
+// GET /drive/transfers
+const getTransfers = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const limit = Number(req.query.limit || 100);
+    const jobs = await prisma.transferJob.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    const out = jobs.map(j => ({
+      uploadId: j.uploadId,
+      fileName: j.fileName,
+      status: j.status,
+      totalBytes: j.totalBytes ? Number(j.totalBytes) : null,
+      transferredBytes: j.transferredBytes ? Number(j.transferredBytes) : null,
+      driveFileId: j.driveFileId || null,
+      errorMessage: j.errorMessage || null,
+      createdAt: j.createdAt,
+      updatedAt: j.updatedAt,
+    }));
+    res.json({ jobs: out });
+  } catch (err) {
+    console.error('getTransfers error', err);
+    res.status(500).json({ message: 'Failed to get transfers' });
+  }
+};
+
+const subscribeUploadProgress = async (req, res) => {
+  const { uploadId } = req.params;
+  if (!uploadId) return res.status(400).json({ message: 'Missing uploadId' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders && res.flushHeaders();
+
+  let entry = progressMap.get(uploadId);
+  if (!entry) {
+    entry = { progress: 0, res: null };
+    progressMap.set(uploadId, entry);
+  }
+
+  entry.res = res;
+
+  res.write(`data: ${JSON.stringify({ progress: entry.progress })}\n\n`);
+
+  req.on('close', () => {
+    if (entry && entry.res === res) entry.res = null;
+  });
+};
+
+const createPreviewToken = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const fileId = req.body?.fileId || req.query?.fileId;
+    if (!fileId) return res.status(400).json({ message: "Missing fileId" });
+
+    const fileRec = await prisma.file.findUnique({ where: { driveFileId: fileId } });
+    if (!fileRec || fileRec.userId !== userId) {
+      return res.status(404).json({ message: "File not found or not owned by user" });
+    }
+
+    const previewToken = generatePreviewToken(req.user, fileId);
+    res.json({ previewToken: previewToken, expiresInSeconds: 60 });
+  } catch (err) {
+    console.error("createPreviewToken error:", err);
+    res.status(500).json({ message: "Failed to create preview token" });
+  }
+};
+
 module.exports = {
   getAuthUrl,
   oauthCallback,
@@ -591,4 +986,9 @@ module.exports = {
   getFiles,
   downloadFile,
   debugRecentUploads,
+  getThumbnail,
+  createPreviewToken,
+  subscribeUploadProgress,
+  getTransfers,
 };
+

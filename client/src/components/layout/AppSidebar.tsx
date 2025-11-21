@@ -1,4 +1,4 @@
-import { Home, Settings, Eye, Plus, HardDrive, LogOut } from "lucide-react";
+import { Home, Settings, Eye, Plus, HardDrive, LogOut, History } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -18,6 +18,7 @@ import { useState } from "react";
 const menuItems = [
   { title: "Home", url: "/", icon: Home },
   { title: "Files", url: "/files", icon: HardDrive },
+  { title: "History", url: "/history", icon: History },
   { title: "Transfers", url: "/transfers", icon: Eye },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
@@ -73,10 +74,9 @@ export function AppSidebar() {
                       to={item.url}
                       end
                       className={({ isActive }) =>
-                        `flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
-                          isActive
-                            ? "bg-gradient-to-r from-primary/20 to-accent/20 text-primary font-medium"
-                            : "hover:bg-white/40"
+                        `flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${isActive
+                          ? "bg-gradient-to-r from-primary/20 to-accent/20 text-primary font-medium"
+                          : "hover:bg-white/40"
                         }`
                       }
                     >
@@ -122,7 +122,7 @@ export function AppSidebar() {
                   </div>
                 )}
 
-{accounts.map((account) => {
+                {accounts.map((account) => {
                   const acct = account as {
                     id: string;
                     email: string;

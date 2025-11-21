@@ -1,6 +1,10 @@
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
-const { generateToken } = require("../utils/jwt");
+const {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyToken,
+} = require("../utils/jwt");
 const prisma = new PrismaClient();
 const { OAuth2Client } = require("google-auth-library");
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -19,11 +23,13 @@ const register = async (req, res) => {
     const user = await prisma.user.create({
       data: { name, email, password: hashedPassword },
     });
-    const token = generateToken(user);
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
     res.status(201).json({
       message: "User registered successfully",
       user: { name, email },
-      token,
+      token: accessToken,
+      refreshToken,
     });
   } catch (err) {
     console.error("Register error:", err);
@@ -42,11 +48,13 @@ const login = async (req, res) => {
     if (!user) return res.status(400).json({ message: "Invalid credentials" });
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(400).json({ message: "Invalid credentials" });
-    const token = generateToken(user);
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
     res.status(200).json({
       message: "Login successful",
       user: { name: user.name, email },
-      token,
+      token: accessToken,
+      refreshToken,
     });
   } catch (err) {
     console.error("Login error:", err);
@@ -75,7 +83,6 @@ const updateProfile = async (req, res) => {
       return res.status(400).json({ message: "Nothing to update" });
     }
 
-    // if email provided, ensure it's not used by another user
     if (email) {
       const existing = await prisma.user.findUnique({ where: { email } });
       if (existing && existing.id !== userId) {
@@ -121,7 +128,8 @@ const googleLogin = async (req, res) => {
         },
       });
     }
-    const token = generateToken(user);
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
     res.status(200).json({
       message: "Google login successful",
       user: {
@@ -129,10 +137,36 @@ const googleLogin = async (req, res) => {
         email: user.email,
         picture: user.profilePicture,
       },
-      token,
+      token: accessToken,
+      refreshToken,
     });
   } catch (err) {
     console.error("Google login error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+const refreshAccessToken = async (req, res) => {
+  try {
+    const bodyToken = req.body?.refreshToken;
+    const headerToken = req.headers["x-refresh-token"];
+    const token = bodyToken || headerToken;
+    if (!token) return res.status(400).json({ message: "Missing refresh token" });
+
+    const payload = verifyToken(token);
+    if (!payload || payload.t !== "refresh")
+      return res.status(401).json({ message: "Invalid or expired refresh token" });
+
+    const user = await prisma.user.findUnique({ where: { id: payload.id } });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // rotate refresh token (stateless) and issue new access token
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    res.json({ token: accessToken, refreshToken });
+  } catch (err) {
+    console.error("refreshAccessToken error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -143,4 +177,7 @@ module.exports = {
   getProfile,
   updateProfile,
   googleLogin,
+  refreshAccessToken,
 };
+
+

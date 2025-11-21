@@ -9,29 +9,35 @@ All colors MUST be HSL.
 @layer base {
   :root {
     /* Minimal modern theme (light background, neutral greys, subtle accent) */
-    --background: 210 20% 98%; /* very light */
-    --foreground: 215 12% 12%; /* dark text */
+    --background: 0 0% 100%;
+    /* Pure white */
+    --foreground: 215 12% 12%;
+    /* dark text */
 
     /* Card / surface */
     --card: 0 0% 100%;
     --card-foreground: 215 12% 12%;
     --glass-bg: 0 0% 100%;
-    --glass-border: 210 15% 92%;
+    --glass-border: 210 15% 94%;
+    /* lighter border */
 
     --popover: 0 0% 100%;
     --popover-foreground: 215 12% 12%;
 
     /* Primary accent: muted indigo */
-    --primary: 224 40% 14%; /* dark indigo for buttons */
+    --primary: 224 40% 14%;
+    /* dark indigo for buttons */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 12% 16%;
-    --secondary-foreground: 0 0% 100%;
+    --secondary: 210 10% 96%;
+    /* Very light grey for secondary */
+    --secondary-foreground: 215 12% 12%;
 
-    --muted: 210 8% 74%;
-    --muted-foreground: 215 10% 40%;
+    --muted: 210 10% 96%;
+    --muted-foreground: 215 10% 45%;
 
-    --accent: 205 80% 45%; /* subtle cyan accent */
+    --accent: 205 80% 45%;
+    /* subtle cyan accent */
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 75% 45%;
@@ -58,51 +64,52 @@ All colors MUST be HSL.
     --gradient-glass: none;
 
     /* Subtle shadows */
-    --shadow-glass: 0 6px 18px 0 rgba(16, 24, 40, 0.06);
-    --shadow-glow: 0 0 12px rgba(16, 24, 40, 0.04);
-    --shadow-elevated: 0 10px 30px 0 rgba(16, 24, 40, 0.08);
+    --shadow-glass: 0 4px 20px -2px rgba(16, 24, 40, 0.08);
+    --shadow-glow: 0 0 15px rgba(16, 24, 40, 0.05);
+    --shadow-elevated: 0 12px 32px -4px rgba(16, 24, 40, 0.1);
   }
 
   .dark {
     /* Dark variant — modern minimal dark */
-    --background: 210 10% 8%;
+    --background: 220 15% 8%;
+    /* slightly blue-tinted dark */
     --foreground: 210 10% 96%;
 
-    --card: 210 10% 10%;
+    --card: 220 15% 10%;
     --card-foreground: 210 10% 96%;
-    --glass-bg: 210 10% 10%;
-    --glass-border: 210 8% 18%;
+    --glass-bg: 220 15% 10%;
+    --glass-border: 215 15% 18%;
 
-    --popover: 210 10% 10%;
+    --popover: 220 15% 10%;
     --popover-foreground: 210 10% 96%;
 
-    --primary: 224 40% 60%;
+    --primary: 224 50% 65%;
     --primary-foreground: 210 10% 6%;
 
-    --secondary: 210 10% 20%;
+    --secondary: 215 15% 20%;
     --secondary-foreground: 210 10% 96%;
 
-    --muted: 210 8% 30%;
-    --muted-foreground: 210 8% 60%;
+    --muted: 215 10% 30%;
+    --muted-foreground: 215 10% 60%;
 
-    --accent: 205 80% 55%;
+    --accent: 205 80% 60%;
     --accent-foreground: 210 10% 6%;
 
-    --destructive: 0 75% 45%;
+    --destructive: 0 75% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 210 8% 18%;
-    --input: 210 8% 18%;
-    --ring: 224 40% 60%;
+    --border: 215 15% 18%;
+    --input: 215 15% 18%;
+    --ring: 224 50% 65%;
 
-    --sidebar-background: 210 10% 6%;
+    --sidebar-background: 220 15% 7%;
     --sidebar-foreground: 210 10% 96%;
-    --sidebar-primary: 224 40% 60%;
+    --sidebar-primary: 224 50% 65%;
     --sidebar-primary-foreground: 210 10% 6%;
-    --sidebar-accent: 210 10% 12%;
+    --sidebar-accent: 215 15% 14%;
     --sidebar-accent-foreground: 210 10% 96%;
-    --sidebar-border: 210 8% 18%;
-    --sidebar-ring: 224 40% 60%;
+    --sidebar-border: 215 15% 18%;
+    --sidebar-ring: 224 50% 65%;
   }
 }
 
@@ -163,12 +170,16 @@ All colors MUST be HSL.
     background: hsl(var(--card));
     border: 1px solid hsl(var(--glass-border));
     box-shadow: var(--shadow-glass);
-    padding: 0.75rem 1.5rem; /* py-3 px-6 */
-    border-radius: 0.75rem; /* rounded-xl */
-    font-weight: 500; /* font-medium */
+    padding: 0.75rem 1.5rem;
+    /* py-3 px-6 */
+    border-radius: 0.75rem;
+    /* rounded-xl */
+    font-weight: 500;
+    /* font-medium */
     transition: transform 0.12s ease, box-shadow 0.12s ease,
       background-color 0.12s ease;
   }
+
   .btn-glass:hover {
     transform: translateY(-2px);
     box-shadow: 0 10px 30px rgba(16, 24, 40, 0.06);
@@ -184,11 +195,9 @@ All colors MUST be HSL.
     border-radius: 0.9rem;
     font-weight: 600;
     color: hsl(var(--primary-foreground));
-    background: linear-gradient(
-      180deg,
-      hsl(var(--primary)) 0%,
-      hsl(var(--primary)) 100%
-    );
+    background: linear-gradient(180deg,
+        hsl(var(--primary)) 0%,
+        hsl(var(--primary)) 100%);
     box-shadow: 0 10px 30px rgba(16, 24, 40, 0.08);
     transition: box-shadow 0.15s ease, transform 0.12s ease, filter 0.12s ease;
     border: none;
@@ -213,7 +222,9 @@ All colors MUST be HSL.
 
   .input-style {
     width: 100%;
-    padding: 0.75rem 0.9rem;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    padding-right: 0.9rem;
     border-radius: 0.7rem;
     border: 1px solid hsl(var(--input));
     background: hsl(var(--card));
@@ -269,9 +280,11 @@ All colors MUST be HSL.
     0% {
       transform: translateY(0px);
     }
+
     50% {
       transform: translateY(3px);
     }
+
     100% {
       transform: translateY(0px);
     }
@@ -288,6 +301,7 @@ All colors MUST be HSL.
     position: absolute;
     bottom: 0;
   }
+
   .truckTires svg {
     width: 24px;
   }
@@ -301,6 +315,7 @@ All colors MUST be HSL.
     align-self: flex-end;
     border-radius: 3px;
   }
+
   .road::before {
     content: "";
     position: absolute;
@@ -312,6 +327,7 @@ All colors MUST be HSL.
     animation: roadAnimation 1.4s linear infinite;
     border-left: 10px solid white;
   }
+
   .road::after {
     content: "";
     position: absolute;
@@ -336,6 +352,7 @@ All colors MUST be HSL.
     0% {
       transform: translateX(0px);
     }
+
     100% {
       transform: translateX(-350px);
     }
@@ -357,8 +374,3 @@ All colors MUST be HSL.
     background: rgba(0, 0, 0, 0.6);
   }
 }
-
-
-
-
-

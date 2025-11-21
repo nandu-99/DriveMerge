@@ -6,6 +6,7 @@ const {
   getProfile,
   googleLogin,
 } = require("../controllers/authController");
+const { refreshAccessToken } = require("../controllers/authController");
 const { authMiddleware } = require("../middlewares/authMiddleware");
 const { oauthCallback } = require("../controllers/driveController");
 
@@ -18,6 +19,7 @@ router.patch(
   require("../controllers/authController").updateProfile
 );
 router.post("/google-login", googleLogin);
+router.post("/refresh", refreshAccessToken);
 router.get("/callback", oauthCallback);
 
 module.exports = router;
