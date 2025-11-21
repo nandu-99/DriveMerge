@@ -12,6 +12,7 @@ type FileEntry = {
   size: string;
   uploadedAt: string;
   mime?: string;
+  thumbnailUrl?: string;
 };
 
 const mockFiles: FileEntry[] = [
@@ -59,6 +60,7 @@ async function fetchFilesFromApi() {
       size?: number;
       modifiedAt?: string;
       mime?: string;
+      thumbnailUrl?: string;
     };
     const files = (data.files || []).map((f: ServerFile) => ({
       id: f.id,
@@ -66,6 +68,9 @@ async function fetchFilesFromApi() {
       size: formatBytes(Number(f.size || 0)),
       uploadedAt: f.modifiedAt ? new Date(f.modifiedAt).toLocaleString() : "",
       mime: f.mime,
+      thumbnailUrl: f.thumbnailUrl
+        ? `${f.thumbnailUrl}&access_token=${encodeURIComponent(localStorage.getItem("dm_token") || "")}`
+        : undefined,
     }));
     return files as FileEntry[];
   } catch (e) {
@@ -97,39 +102,18 @@ export default function FileBrowser() {
     try {
       const token =
         typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
-      const res = await fetch(
-        `${API_BASE}/drive/files/download?id=${encodeURIComponent(id)}`,
-        {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        }
-      );
-      if (!res.ok) {
-        const blob = new Blob([`File ${id} - mock content`], {
-          type: "application/octet-stream",
-        });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `file-${id}`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+
+      const url = `${API_BASE}/drive/files/download?id=${encodeURIComponent(id)}&access_token=${encodeURIComponent(token || "")}`;
+
       const a = document.createElement("a");
       a.href = url;
-      const cd = res.headers.get("content-disposition") || "";
-      const m = cd.match(/filename\*=UTF-8''(.+)|filename="?([^;\n"]+)"?/);
-      a.download = m ? decodeURIComponent(m[1] || m[2]) : `file-${id}`;
+      a.download = "";
       document.body.appendChild(a);
       a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
     } catch (err) {
-      console.error(err);
+      console.error("Download error:", err);
+      alert("Failed to initiate download. Please try again.");
     }
   }
 
@@ -137,141 +121,142 @@ export default function FileBrowser() {
     const f = (files as FileEntry[]).find((x) => x.id === id) as
       | FileEntry
       | undefined;
-    if (!f) return;
+    if (!f) {
+      console.error("File not found:", id);
+      return;
+    }
     try {
       const token =
         typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
-      const res = await fetch(
-        `${API_BASE}/drive/files/download?id=${encodeURIComponent(id)}`,
-        {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        }
-      );
-      if (!res.ok) {
+      if (!token) {
+        console.warn("No token found, showing preview without token");
         setPreview(f);
         return;
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      setPreview({ ...f, mime: blob.type, name: url });
+
+      const resp = await fetch(`${API_BASE}/drive/files/preview-token`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ fileId: id }),
+      });
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        console.error("Preview token failed:", errorText);
+        setPreview(f);
+        return;
+      }
+      const data = await resp.json();
+      const previewToken = data.previewToken;
+      if (!previewToken) {
+        console.warn("No preview token in response");
+        setPreview(f);
+        return;
+      }
+
+      const url = `${API_BASE}/drive/files/download?id=${encodeURIComponent(
+        id
+      )}&preview=1&preview_token=${encodeURIComponent(previewToken)}`;
+      setPreview({ ...f, thumbnailUrl: url });
     } catch (err) {
-      console.error(err);
+      console.error("Preview error:", err);
       setPreview(f);
     }
   }
 
   function closePreview() {
-    if (preview?.name?.startsWith("blob:")) {
-      URL.revokeObjectURL(preview.name as string);
+    if (preview?.thumbnailUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(preview.thumbnailUrl);
     }
     setPreview(null);
   }
 
   return (
-    <div className="space-y-4 p-4 sm:p-6">
+    <div className="space-y-6 p-4 sm:p-6 max-w-7xl mx-auto">
       {/* Header - Mobile Responsive */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h1 className="text-2xl sm:text-3xl font-semibold">Files</h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Files</h1>
+          <p className="text-muted-foreground mt-1">
+            Browse and manage your cloud files
+          </p>
+        </div>
 
         {/* Controls - Responsive Layout */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          {/* Search Bar - Mobile Toggle */}
-          <div className="relative">
-            {/* Mobile: Icon button to toggle search */}
-            {/* <button
-              onClick={() => setSearchOpen(!searchOpen)}
-              className="sm:hidden w-full px-3 py-2 rounded-md bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center gap-2"
-              aria-label="Toggle search"
-            >
-              <Search className="h-4 w-4" />
-              <span className="text-sm">Search</span>
-            </button> */}
-
-            {/* Desktop: Always visible search */}
-            <div className="w-80 sm:w-64">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search files..."
-                  className="w-full pl-9 pr-3 py-2 border rounded-md bg-white/5 focus:bg-white/10 transition-colors"
-                />
-              </div>
+          {/* Desktop: Always visible search */}
+          <div className="w-full sm:w-72">
+            <div className="relative group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search files..."
+                className="input-style pl-11 w-full"
+              />
             </div>
-
-            {/* Mobile: Expandable search */}
-            {/* {searchOpen && (
-              <div className="sm:hidden mt-2 w-full">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <input
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search files..."
-                    className="w-full pl-9 pr-3 py-2 border rounded-md bg-white/5 focus:bg-white/10 transition-colors"
-                    autoFocus
-                  />
-                </div>
-              </div>
-            )} */}
           </div>
 
           {/* View Controls */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 p-1 rounded-xl border border-white/5">
             <button
               onClick={() => setView("grid")}
-              className={`flex-1 sm:flex-none px-3 py-2 rounded-md transition-all flex items-center justify-center gap-2 ${
-                view === "grid"
-                  ? "bg-primary text-primary-foreground shadow-md"
-                  : "bg-white/10 hover:bg-white/20"
-              }`}
+              className={`p-2 rounded-lg transition-all ${view === "grid"
+                ? "bg-background shadow-sm text-primary"
+                : "text-muted-foreground hover:text-foreground"
+                }`}
               aria-pressed={view === "grid"}
               aria-label="Grid view"
             >
               <Grid3x3 className="h-4 w-4" />
-              <span className="text-sm sm:inline">Grid</span>
             </button>
             <button
               onClick={() => setView("list")}
-              className={`flex-1 sm:flex-none px-3 py-2 rounded-md transition-all flex items-center justify-center gap-2 ${
-                view === "list"
-                  ? "bg-primary text-primary-foreground shadow-md"
-                  : "bg-white/10 hover:bg-white/20"
-              }`}
+              className={`p-2 rounded-lg transition-all ${view === "list"
+                ? "bg-background shadow-sm text-primary"
+                : "text-muted-foreground hover:text-foreground"
+                }`}
               aria-pressed={view === "list"}
               aria-label="List view"
             >
               <List className="h-4 w-4" />
-              <span className="text-sm sm:inline">List</span>
-            </button>
-            <button
-              onClick={() => refetch()}
-              className="flex-1 sm:flex-none px-3 py-2 rounded-md bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center gap-2"
-              aria-label="Refresh files"
-            >
-              <RefreshCw className="h-4 w-4" />
-              <span className="text-sm sm:inline">Refresh</span>
             </button>
           </div>
+
+          <button
+            onClick={() => refetch()}
+            className="btn-glass p-2.5"
+            aria-label="Refresh files"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
       {/* Loading State */}
       {isLoading && (
-        <div className="text-sm text-muted-foreground text-center py-8">
-          Loading files...
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+          <RefreshCw className="h-8 w-8 animate-spin mb-4 text-primary/50" />
+          <p>Loading files...</p>
         </div>
       )}
 
       {/* Empty State */}
       {filtered.length === 0 && !isLoading && (
-        <div className="text-center py-12">
-          <div className="text-muted-foreground mb-2">No files found</div>
+        <div className="glass-card flex flex-col items-center justify-center py-16 text-center">
+          <div className="h-16 w-16 rounded-full bg-muted/30 flex items-center justify-center mb-4">
+            <Search className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-medium">No files found</h3>
+          <p className="text-muted-foreground mt-1 max-w-xs mx-auto">
+            {q ? "Try adjusting your search terms" : "Upload some files to get started"}
+          </p>
           {q && (
             <button
               onClick={() => setQ("")}
-              className="text-sm text-primary hover:underline"
+              className="mt-4 text-sm text-primary hover:underline font-medium"
             >
               Clear search
             </button>
@@ -281,7 +266,7 @@ export default function FileBrowser() {
 
       {/* Files Display */}
       {view === "list" ? (
-        <div className="space-y-2 sm:space-y-3">
+        <div className="space-y-2">
           {filtered.map((f: FileEntry) => (
             <FileListItem
               key={f.id}
@@ -309,40 +294,50 @@ export default function FileBrowser() {
       {/* Preview Modal - Responsive */}
       {preview && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 sm:p-6"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6 animate-in fade-in duration-200"
           onClick={closePreview}
         >
           <div
-            className="bg-white dark:bg-gray-900 p-4 sm:p-6 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto shadow-2xl"
+            className="glass-card p-4 sm:p-6 max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border-white/10 bg-[#0a0a0a]/90"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center mb-3 sm:mb-4">
-              <div className="font-medium text-base sm:text-lg truncate pr-4">
-                Preview
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <div className="font-medium text-lg truncate pr-4 flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                  {preview.mime?.startsWith("image/") ? <Grid3x3 className="h-4 w-4" /> : <List className="h-4 w-4" />}
+                </span>
+                {preview.name}
               </div>
               <button
                 onClick={closePreview}
-                className="text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors flex-shrink-0"
+                className="btn-glass px-3 py-1.5 text-sm"
               >
                 Close
               </button>
             </div>
-            <div className="flex items-center justify-center">
+            <div className="flex-1 flex items-center justify-center overflow-hidden bg-black/20 rounded-xl border border-white/5 relative min-h-[300px]">
               {preview.mime?.startsWith("image/") ? (
                 <img
-                  src={preview.name}
-                  alt={preview.id}
-                  className="max-h-[60vh] sm:max-h-[70vh] w-auto max-w-full rounded-md"
+                  src={preview.thumbnailUrl || `${API_BASE}/drive/files/download?id=${encodeURIComponent(preview.id)}&preview=1`}
+                  alt={preview.name}
+                  className="max-h-full max-w-full object-contain"
                 />
               ) : preview.mime?.startsWith("video/") ? (
                 <video
-                  src={preview.name}
+                  src={preview.thumbnailUrl || `${API_BASE}/drive/files/download?id=${encodeURIComponent(preview.id)}&preview=1`}
                   controls
-                  className="max-h-[60vh] sm:max-h-[70vh] w-auto max-w-full rounded-md"
+                  className="max-h-full max-w-full"
                 />
               ) : (
-                <div className="text-sm text-center py-8 text-muted-foreground">
-                  No preview available for this file.
+                <div className="flex flex-col items-center justify-center text-muted-foreground">
+                  <List className="h-16 w-16 mb-4 opacity-20" />
+                  <p>No preview available</p>
+                  <button
+                    onClick={() => handleDownload(preview.id)}
+                    className="mt-4 btn-primary-glass text-sm"
+                  >
+                    Download to view
+                  </button>
                 </div>
               )}
             </div>

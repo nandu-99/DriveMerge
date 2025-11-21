@@ -27,7 +27,6 @@ const Login = () => {
         if (profile?.name)
           localStorage.setItem("dm_user_name", String(profile.name));
       } catch (e) {
-        // profile fetch failed; ProtectedRoute will handle re-checks
       }
 
       setLoading(false);
@@ -48,22 +47,14 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="glass-card max-w-md w-full p-8">
-      <div className="px-3 mb-2">
-          <div
-          >
-            <img
+        <div className="flex justify-center mb-6">
+          <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center border border-white/10 shadow-lg shadow-primary/5">
+            {/* <img
               src="/DriveMergeLogo.png"
               alt="DriveMerge"
-              className={
-                  "object-contain h-14 mx-auto rounded-md p-0.5 bg-white/5"
-              }
-              style={{ display: "block" }}
-              onError={(e) => {
-                const el = e.currentTarget as HTMLImageElement;
-                el.style.display = "none";
-              }}
-            />{" "}
-            {/* <span className="sr-only">DriveMerge</span> */}
+              className="h-10 w-10 object-contain"
+            /> */}
+            <span className="text-2xl font-bold text-primary">DM</span>
           </div>
         </div>
         <h1 className="text-2xl font-semibold mb-2">Sign in</h1>

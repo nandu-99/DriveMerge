@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Download, Eye, File, Image, Video, FileText, Music } from "lucide-react";
 
 interface Props {
@@ -8,6 +8,7 @@ interface Props {
     size: string;
     uploadedAt: string;
     mime?: string;
+    thumbnailUrl?: string;
   };
   onDownload: (id: string) => void;
   onPreview: (id: string) => void;
@@ -27,12 +28,34 @@ function FileCard({ file, onDownload, onPreview }: Omit<Props, "view">) {
   const isImage = file.mime?.startsWith("image/");
   const isVideo = file.mime?.startsWith("video/");
   const IconComponent = getFileIcon(file.mime);
+  const [thumbError, setThumbError] = useState(false);
+  const [thumbLoading, setThumbLoading] = useState(Boolean(isImage && file.thumbnailUrl));
 
   return (
     <div className="glass-card p-3 sm:p-4 flex flex-col items-start hover:shadow-elevated transition-all hover:scale-[1.02] active:scale-[0.98]">
       {/* Preview Area */}
       <div className="w-full h-32 sm:h-40 bg-white/5 rounded-md overflow-hidden flex items-center justify-center mb-3 relative group">
-        <IconComponent className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground/50" />
+        {isImage && file.thumbnailUrl && !thumbError ? (
+          <>
+            <img
+              src={file.thumbnailUrl}
+              alt={file.name}
+              className="object-cover w-full h-full"
+              onError={() => {
+                setThumbError(true);
+                setThumbLoading(false);
+              }}
+              onLoad={() => setThumbLoading(false)}
+            />
+            {thumbLoading && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="animate-spin h-8 w-8 border-2 border-gray-300 border-t-transparent rounded-full" />
+              </div>
+            )}
+          </>
+        ) : (
+          <IconComponent className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground/50" />
+        )}
         {(isImage || isVideo) && (
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
             <Eye className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-white" />
@@ -103,8 +126,23 @@ export default function FileListItem({
         {/* File Info Section */}
         <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
           {/* Icon */}
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-md bg-white/5 flex items-center justify-center flex-shrink-0">
-            <IconComponent className="h-5 w-5 sm:h-6 sm:w-6 text-muted-foreground" />
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-md bg-white/5 flex items-center justify-center flex-shrink-0 overflow-hidden">
+            {file.mime?.startsWith("image/") && file.thumbnailUrl ? (
+              <img
+                src={file.thumbnailUrl}
+                alt={file.name}
+                className="object-cover w-full h-full"
+                onError={(e) => {
+                  const el = e.currentTarget as HTMLImageElement;
+                  el.style.display = "none";
+                }}
+                onLoad={() => {
+                  /* nothing for small icon */
+                }}
+              />
+            ) : (
+              <IconComponent className="h-5 w-5 sm:h-6 sm:w-6 text-muted-foreground" />
+            )}
           </div>
 
           {/* File Details */}
