@@ -10,6 +10,7 @@ type FileEntry = {
   id: string;
   name: string;
   size: string;
+  sizeBytes: number;
   uploadedAt: string;
   mime?: string;
   thumbnailUrl?: string;
@@ -20,6 +21,7 @@ const mockFiles: FileEntry[] = [
     id: "1",
     name: "photo.jpg",
     size: "2.1 MB",
+    sizeBytes: 2100000,
     uploadedAt: new Date().toISOString(),
     mime: "image/jpeg",
   },
@@ -27,6 +29,7 @@ const mockFiles: FileEntry[] = [
     id: "2",
     name: "report.pdf",
     size: "550 KB",
+    sizeBytes: 550000,
     uploadedAt: new Date().toISOString(),
     mime: "application/pdf",
   },
@@ -34,6 +37,7 @@ const mockFiles: FileEntry[] = [
     id: "3",
     name: "video.mp4",
     size: "24 MB",
+    sizeBytes: 24000000,
     uploadedAt: new Date().toISOString(),
     mime: "video/mp4",
   },
@@ -56,6 +60,7 @@ async function fetchFilesFromApi() {
       id: f.id,
       name: f.name,
       size: formatBytes(Number(f.size || 0)),
+      sizeBytes: Number(f.size || 0),
       uploadedAt: f.modifiedAt ? new Date(f.modifiedAt).toLocaleString() : "",
       mime: f.mime,
       thumbnailUrl: f.thumbnailUrl,
@@ -79,12 +84,32 @@ export default function FileBrowser() {
   const [view, setView] = useState<"list" | "grid">("grid");
   const [searchOpen, setSearchOpen] = useState(false);
 
+  const [sortBy, setSortBy] = useState<"date" | "size" | "name">("date");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
   const filtered = useMemo(() => {
-    if (!q) return files;
-    return files.filter((f: FileEntry) =>
-      f.name.toLowerCase().includes(q.toLowerCase())
-    );
-  }, [files, q]);
+    let filesToFilter = files;
+    if (q) {
+      filesToFilter = files.filter((f: FileEntry) =>
+        f.name.toLowerCase().includes(q.toLowerCase())
+      );
+    }
+
+    return [...filesToFilter].sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === 'name') {
+        cmp = a.name.localeCompare(b.name);
+      } else if (sortBy === 'size') {
+        cmp = (a.sizeBytes || 0) - (b.sizeBytes || 0);
+      } else if (sortBy === 'date') {
+        // Handle potentially invalid dates gracefully, defaulting to 0
+        const dateA = new Date(a.uploadedAt).getTime() || 0;
+        const dateB = new Date(b.uploadedAt).getTime() || 0;
+        cmp = dateA - dateB;
+      }
+      return sortOrder === 'asc' ? cmp : -cmp;
+    });
+  }, [files, q, sortBy, sortOrder]);
 
   async function handleDownload(id: string) {
     console.log("Download clicked for file:", id);
@@ -178,16 +203,33 @@ export default function FileBrowser() {
           <div className="relative">
 
 
-            <div className="w-80 sm:w-64">
-              <div className="relative">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="w-full sm:w-64 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search files..."
-                  className="w-full pl-9 pr-3 py-2 border rounded-md bg-white/5 focus:bg-white/10 transition-colors"
+                  placeholder="Search..."
+                  className="w-full pl-9 pr-3 py-2 h-9 text-sm border border-input rounded-md bg-background focus:ring-1 focus:ring-ring transition-colors"
                 />
               </div>
+
+              <select
+                value={`${sortBy}-${sortOrder}`}
+                onChange={(e) => {
+                  const [newSort, newOrder] = e.target.value.split('-');
+                  setSortBy(newSort as any);
+                  setSortOrder(newOrder as any);
+                }}
+                className="h-9 px-3 py-1 rounded-md border border-input bg-background/50 text-sm focus:outline-none focus:ring-1 focus:ring-ring appearance-none min-w-[130px] cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors"
+              >
+                <option value="date-desc">Newest</option>
+                <option value="date-asc">Oldest</option>
+                <option value="size-desc">Largest</option>
+                <option value="size-asc">Smallest</option>
+                <option value="name-asc">Name (A-Z)</option>
+                <option value="name-desc">Name (Z-A)</option>
+              </select>
             </div>
 
 
@@ -196,35 +238,35 @@ export default function FileBrowser() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setView("grid")}
-              className={`flex-1 sm:flex-none px-3 py-2 rounded-md transition-all flex items-center justify-center gap-2 ${view === "grid"
-                ? "bg-primary text-primary-foreground shadow-md"
-                : "bg-white/10 hover:bg-white/20"
+              className={`flex-1 sm:flex-none h-9 w-9 rounded-md transition-all flex items-center justify-center ${view === "grid"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-background border border-input hover:bg-accent hover:text-accent-foreground"
                 }`}
               aria-pressed={view === "grid"}
               aria-label="Grid view"
+              title="Grid View"
             >
               <Grid3x3 className="h-4 w-4" />
-              <span className="text-sm sm:inline">Grid</span>
             </button>
             <button
               onClick={() => setView("list")}
-              className={`flex-1 sm:flex-none px-3 py-2 rounded-md transition-all flex items-center justify-center gap-2 ${view === "list"
-                ? "bg-primary text-primary-foreground shadow-md"
-                : "bg-white/10 hover:bg-white/20"
+              className={`flex-1 sm:flex-none h-9 w-9 rounded-md transition-all flex items-center justify-center ${view === "list"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-background border border-input hover:bg-accent hover:text-accent-foreground"
                 }`}
               aria-pressed={view === "list"}
               aria-label="List view"
+              title="List View"
             >
               <List className="h-4 w-4" />
-              <span className="text-sm sm:inline">List</span>
             </button>
             <button
               onClick={() => refetch()}
-              className="flex-1 sm:flex-none px-3 py-2 rounded-md bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center gap-2"
+              className="flex-1 sm:flex-none h-9 w-9 rounded-md bg-background border border-input hover:bg-accent hover:text-accent-foreground transition-all flex items-center justify-center"
               aria-label="Refresh files"
+              title="Refresh"
             >
               <RefreshCw className="h-4 w-4" />
-              <span className="text-sm sm:inline">Refresh</span>
             </button>
           </div>
         </div>
@@ -251,16 +293,30 @@ export default function FileBrowser() {
       )}
 
       {view === "list" ? (
-        <div className="space-y-2 sm:space-y-3">
-          {filtered.map((f: FileEntry) => (
-            <FileListItem
-              key={f.id}
-              file={f}
-              onDownload={handleDownload}
-              onPreview={handlePreview}
-              view="list"
-            />
-          ))}
+        <div className="border border-border/80 rounded-xl bg-card/50 overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-muted/40 border-b border-border">
+                <tr>
+                  <th className="px-4 pl-6 py-3 font-medium text-muted-foreground w-[40%]">Name</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell w-[15%]">Size</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell w-[25%]">Details</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground text-right pr-6">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {filtered.map((f: FileEntry) => (
+                  <FileListItem
+                    key={f.id}
+                    file={f}
+                    onDownload={handleDownload}
+                    onPreview={handlePreview}
+                    view="list"
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
