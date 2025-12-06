@@ -116,72 +116,103 @@ export function FilesList() {
   }
 
   return (
-    <div className="w-full max-w-5xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3 px-1">
-        <h2 className="text-sm font-medium text-foreground tracking-tight">Your Files</h2>
-        <span className="text-xs font-mono text-muted-foreground">
-          {loading ? "Loading..." : `${files.length} file(s) stored`}
-        </span>
+    <div className="w-full max-w-5xl mx-auto space-y-4">
+      <div className="flex items-center justify-between px-1">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">Files</h2>
+          <p className="text-sm text-muted-foreground">
+            Manage and monitor your uploaded assets
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate("/files")}
+            className="px-4 py-2 rounded-md bg-foreground text-background text-sm font-medium hover:bg-foreground/90 transition-colors"
+          >
+            View All
+          </button>
+        </div>
       </div>
 
-      {error && <div className="text-xs font-mono text-red-400 mb-4 px-1">{error}</div>}
+      {error && <div className="text-xs font-mono text-red-500 bg-red-500/10 p-3 rounded-md">{error}</div>}
 
-      <div className="space-y-2">
-        {files.map((file) => (
-          <div
-            key={file.id}
-            className="group border border-border rounded-md p-3 bg-card hover:bg-accent/50 hover:border-accent-foreground/20 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-          >
-            <div className="flex items-start sm:items-center gap-3 flex-1 w-full">
-              <div className="p-2 rounded-md bg-muted border border-border flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors">
-                <File className="h-4 w-4" />
-              </div>
-              <div className="flex-1 min-w-0 overflow-hidden">
-                <h3 className="text-sm font-medium text-foreground mb-1 truncate break-all group-hover:text-primary transition-colors">{file.name}</h3>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] sm:text-xs font-mono text-muted-foreground">
-                  <span>{formatBytes(file.sizeBytes)}</span>
-                  <span className="flex items-center gap-1.5">
-                    <HardDrive className="h-3 w-3" />
-                    {file.accounts} account{file.accounts > 1 ? "s" : ""}
-                  </span>
-                  <span>{file.chunks} chunks</span>
-                  <span>{file.uploadDate}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                onClick={() => handleDownload(file.id, file.name)}
-                className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                title="Download"
-              >
-                <Download className="h-4 w-4" />
-              </button>
-              <button
-                className="p-1.5 rounded-md hover:bg-red-500/10 transition-colors text-muted-foreground hover:text-red-500"
-                title="Delete"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        ))}
-        {!loading && files.length === 0 && (
-          <div className="text-xs font-mono text-muted-foreground text-center py-8 border border-dashed border-border rounded-lg">
-            No files found
-          </div>
-        )}
-        {!loading && files.length > 0 && (
-          <div className="flex justify-center mt-6">
-            <button
-              onClick={() => navigate("/files")}
-              className="px-4 py-1.5 rounded-md border border-border bg-muted/50 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            >
-              View All Files
-            </button>
-          </div>
-        )}
+      <div className="border border-border/80 rounded-xl bg-card overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-muted/30 border-b border-border">
+              <tr>
+                <th className="px-4 pl-6 py-3 font-medium text-muted-foreground w-[40%]">Name</th>
+                <th className="px-4 py-3 font-medium text-muted-foreground w-[15%]">Size</th>
+                <th className="px-4 py-3 font-medium text-muted-foreground w-[25%]">Details</th>
+                <th className="px-4 py-3 font-medium text-muted-foreground text-right pr-6">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/50">
+              {loading ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground text-sm">
+                    Loading files...
+                  </td>
+                </tr>
+              ) : files.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground text-sm">
+                    No files uploaded yet.
+                  </td>
+                </tr>
+              ) : (
+                files.map((file) => (
+                  <tr
+                    key={file.id}
+                    className="group hover:bg-muted/50 transition-colors"
+                  >
+                    <td className="px-4 pl-6 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-md bg-muted/50 text-muted-foreground group-hover:text-foreground group-hover:bg-muted transition-colors">
+                          <File className="h-4 w-4" />
+                        </div>
+                        <span className="font-medium text-foreground truncate max-w-[200px] sm:max-w-[300px]" title={file.name}>
+                          {file.name}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                      {formatBytes(file.sizeBytes)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                          <HardDrive className="h-3 w-3 opacity-70" />
+                          {file.accounts} account{file.accounts !== 1 ? 's' : ''}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground/60 font-mono">
+                          {file.uploadDate}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right pr-6">
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                        <button
+                          onClick={() => handleDownload(file.id, file.name)}
+                          className="p-2 rounded-md hover:bg-background hover:text-foreground text-muted-foreground transition-colors border border-transparent hover:border-border hover:shadow-sm"
+                          title="Download"
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                        <button
+                          className="p-2 rounded-md hover:bg-red-500/10 hover:text-red-500 text-muted-foreground transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
