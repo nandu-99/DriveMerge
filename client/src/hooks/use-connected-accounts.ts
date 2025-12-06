@@ -16,17 +16,18 @@ export function useConnectedAccounts() {
     queryFn: async () => {
       try {
         const data = await apiGet("/drive/accounts");
-        
+
         if (!Array.isArray(data)) return [];
         return data.map((a: Record<string, unknown>) => ({
-          id: String(a.email ?? ""),
+          id: String(a.id ?? ""),
           email: String(a.email ?? ""),
-          used_space: Number(a.usedSpace ?? 0),
-          total_space: Number(a.totalSpace ?? 0),
+          // Backend returns GB, we convert to bytes for the UI formatter
+          used_space: Number(a.usedSpace ?? 0) * 1024 * 1024 * 1024,
+          total_space: Number(a.totalSpace ?? 0) * 1024 * 1024 * 1024,
           provider: "google",
-        }));
+        })).filter(a => a.id !== "");
       } catch (err) {
-        
+
         return [];
       }
     },
