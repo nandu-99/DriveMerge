@@ -39,17 +39,7 @@ const mockFiles: FileEntry[] = [
   },
 ];
 
-function formatBytes(bytes: number) {
-  if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let i = 0;
-  let val = bytes;
-  while (val >= 1024 && i < units.length - 1) {
-    val /= 1024;
-    i++;
-  }
-  return `${Number(val.toFixed(2))} ${units[i]}`;
-}
+import { formatBytes } from "@/lib/utils";
 
 async function fetchFilesFromApi() {
   try {

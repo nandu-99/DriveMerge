@@ -24,14 +24,7 @@ type TransferJob = {
     updatedAt: string;
 };
 
-const formatBytes = (bytes: number, decimals = 2): string => {
-    if (!bytes) return "0 B";
-    const k = 1024;
-    const dm = Math.max(0, decimals);
-    const sizes = ["B", "KB", "MB", "GB", "TB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
-};
+import { formatBytes } from "@/lib/utils";
 
 const calculateETR = (startedAt: string, progress: number) => {
     if (progress <= 0 || progress >= 100) return null;
