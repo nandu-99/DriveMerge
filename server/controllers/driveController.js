@@ -10,7 +10,6 @@ const fs = require("fs");
 const path = require("path");
 const cloudinary = require("cloudinary").v2;
 
-// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -25,8 +24,6 @@ const oauth2Client = new google.auth.OAuth2(
   `${process.env.BACKEND_URL}/auth/callback`
 );
 
-// Configure multer to use disk storage for large uploads (safer than memory)
-// Default max upload size set to 20 GB unless overridden by MAX_UPLOAD_BYTES env
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES) || 20 * 1024 ** 3; // 20 GB default
 const upload = multer({
   storage: multer.diskStorage({
@@ -36,7 +33,6 @@ const upload = multer({
   limits: { fileSize: MAX_UPLOAD_BYTES },
 });
 const progressMap = new Map();
-// simple in-memory recent uploads store (debugging aid)
 const recentUploads = [];
 
 const getAuthUrl = async (req, res) => {
@@ -188,11 +184,9 @@ const uploadFiles = [
 
       const tasks = [];
 
-      // optional account override from client (body or query)
       const preferredAccountId = req.body?.driveAccountId || req.query?.driveAccountId;
 
       for (const file of req.files) {
-        // compute file hash for duplicate detection
         let fileHash = null;
         if (file.path) {
           fileHash = await new Promise((resolve, reject) => {
@@ -206,13 +200,11 @@ const uploadFiles = [
 
         const uploadId = uuidv4();
 
-        // duplicate detection: if file with same hash and size exists for this user
         if (fileHash) {
           const existing = await prisma.file.findFirst({
             where: { userId, fileHash, sizeBytes: BigInt(file.size) },
           });
           if (existing) {
-            // record a TransferJob as already succeeded (deduped)
             await prisma.transferJob.create({
               data: {
                 uploadId,
@@ -229,7 +221,6 @@ const uploadFiles = [
           }
         }
 
-        // choose account: prefer override if provided and valid
         let suitableAccount = null;
         if (preferredAccountId) {
           suitableAccount = accounts.find(a => String(a.id) === String(preferredAccountId));
@@ -259,7 +250,6 @@ const uploadFiles = [
         tasks.push({ id: uploadId, fileName: file.originalname });
         progressMap.set(uploadId, { progress: 0, res: null });
 
-        // create TransferJob record as pending
         await prisma.transferJob.create({
           data: {
             uploadId,
@@ -272,7 +262,6 @@ const uploadFiles = [
           },
         });
 
-        // attach fileHash to request file for later persistence
         file._fileHash = fileHash;
 
         setImmediate(() => {
@@ -295,16 +284,8 @@ const uploadFiles = [
   },
 ];
 
-// Ensure thumbnail cache directory exists (legacy cleanup or just no-op)
-// We rely on Cloudinary now.
 const THUMB_DIR = path.join(process.cwd(), "tmp", "thumbnails");
-try {
-  if (fs.existsSync(THUMB_DIR)) {
-    // Optional: clean it up if you want, or just ignore it
-  }
-} catch (e) {
-  // ignore
-}
+
 
 
 function svgPlaceholder(name, width = 400, height = 300) {
@@ -316,13 +297,11 @@ function svgPlaceholder(name, width = 400, height = 300) {
     </svg>`;
 }
 
-// GET /drive/files/thumbnail?id=...&size=200
 const getThumbnail = async (req, res) => {
   const { id, size = 400, preview_token: previewToken } = req.query;
   if (!id) return res.status(400).json({ message: "Missing file id" });
 
   try {
-    // auth logic: accept normal req.user or preview token
     let userId = null;
     let tokenPayload = null;
     if (req.user && req.user.id) {
@@ -332,7 +311,6 @@ const getThumbnail = async (req, res) => {
         tokenPayload = require("../utils/jwt").verifyToken(previewToken);
         if (tokenPayload && tokenPayload.id) userId = tokenPayload.id;
       } catch (e) {
-        // ignore
       }
     }
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -342,7 +320,6 @@ const getThumbnail = async (req, res) => {
       return res.status(404).json({ message: "File not found or not owned by user" });
     }
 
-    // If preview token present, validate binding
     if (tokenPayload && tokenPayload.t === "preview") {
       if (tokenPayload.fileId !== id || tokenPayload.id !== userId) {
         return res.status(401).json({ message: "Invalid preview token for this file" });
@@ -351,11 +328,8 @@ const getThumbnail = async (req, res) => {
 
     const publicId = `drive_thumbnails/${id}`;
 
-    // Check if thumbnail exists in Cloudinary
     try {
       await cloudinary.api.resource(publicId);
-      // If we are here, it exists. Redirect to it with transformations.
-      // Cloudinary transformations: fill to size
       const url = cloudinary.url(publicId, {
         width: size,
         crop: "fill",
@@ -364,17 +338,13 @@ const getThumbnail = async (req, res) => {
       });
       return res.redirect(url);
     } catch (error) {
-      // If 404, we need to upload. If 420 (Rate Limited), we might fail or try upload?
-      // We'll proceed to try to generate it.
       if (error && error.http_code !== 404) {
         console.warn("Cloudinary check error", error.message);
       }
     }
 
-    // Fetch file metadata and stream from Drive
     const accounts = await prisma.driveAccount.findMany({ where: { userId } });
 
-    // Attempt to download and upload to Cloudinary
     for (const account of accounts) {
       try {
         const auth = new google.auth.OAuth2(
@@ -392,19 +362,14 @@ const getThumbnail = async (req, res) => {
         const mime = meta.data.mimeType || "application/octet-stream";
 
         if (!mime.startsWith("image/")) {
-          // Not an image — return an SVG placeholder
           const svg = svgPlaceholder(meta.data.name || id, size, Math.round(size * 0.75));
           res.setHeader("Content-Type", "image/svg+xml");
           res.send(svg);
           return;
         }
 
-        // Stream file from Drive
         const streamResp = await drive.files.get({ fileId: id, alt: "media" }, { responseType: "stream" });
 
-        // Pipe to Cloudinary
-        // We upload the full image to Cloudinary (as efficient as possible) 
-        // and let Cloudinary handle resizing on delivery.
         await new Promise((resolve, reject) => {
           const uploadStream = cloudinary.uploader.upload_stream(
             {
@@ -422,7 +387,6 @@ const getThumbnail = async (req, res) => {
           streamResp.data.on('error', reject);
         });
 
-        // Redirect to new thumbnail
         const url = cloudinary.url(publicId, {
           width: size,
           crop: "fill",
@@ -437,7 +401,6 @@ const getThumbnail = async (req, res) => {
       }
     }
 
-    // Fallback if all accounts failed or not image
     const svg = svgPlaceholder(id, size, Math.round(size * 0.75));
     res.setHeader("Content-Type", "image/svg+xml");
     res.send(svg);
@@ -448,8 +411,6 @@ const getThumbnail = async (req, res) => {
 };
 
 
-// No periodic cleanup needed for Cloudinary (managed service)
-// We can keep this empty block to maintain structure if needed or just remove it.
 
 
 const uploadToDrive = async (uploadId, file, account, userId) => {
@@ -458,11 +419,9 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
       throw new Error("Missing refresh token");
     }
 
-    // mark TransferJob as in_progress
     try {
       await prisma.transferJob.update({ where: { uploadId }, data: { status: 'in_progress' } });
     } catch (e) {
-      // ignore if no job found
     }
 
     const auth = new google.auth.OAuth2(
@@ -470,11 +429,8 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
       process.env.GOOGLE_CLIENT_SECRET
     );
 
-    // Use the stored refresh token to obtain a fresh access token
     auth.setCredentials({ refresh_token: account.refreshToken });
 
-    // googleapis may expose different helpers depending on version; using getAccessToken
-    // will automatically refresh if needed. Some versions return an object, some a string.
     const accessResp = await auth.getAccessToken();
     const access_token =
       accessResp && typeof accessResp === "object"
@@ -488,7 +444,6 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
     auth.setCredentials({ access_token });
     const drive = google.drive({ version: "v3", auth });
 
-    // For disk storage, stream from the temp file and track progress
     const filePath = file.path || (file.buffer && null);
     let fileSize = file.size;
 
@@ -498,7 +453,6 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
       fileSize = stat.size;
       readStream = fs.createReadStream(filePath);
     } else if (file.buffer) {
-      // fallback (shouldn't happen with diskStorage)
       readStream = require("stream").Readable.from(file.buffer);
     } else {
       throw new Error("No file data available for upload");
@@ -517,7 +471,6 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
       }
       pass.write(chunk);
 
-      // update transferredBytes in DB (best-effort, non-blocking)
       try {
         prisma.transferJob.update({ where: { uploadId }, data: { transferredBytes: BigInt(uploaded) } }).catch(() => { });
       } catch (e) { }
@@ -534,7 +487,6 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
     const response = await drive.files.create({
       requestBody: {
         name: file.originalname,
-        // tag file so we can identify files uploaded by this app/user later
         appProperties: {
           uploaderId: String(userId),
           uploaderApp: "DriveMerge",
@@ -544,7 +496,6 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
       fields: "id, name, mimeType, size, modifiedTime",
     });
 
-    // Log and store debug info about the uploaded file and persist metadata to DB
     try {
       const driveFileId = response.data && response.data.id;
       console.log(
@@ -558,10 +509,8 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
         userId,
         uploadedAt: new Date().toISOString(),
       });
-      // keep recentUploads bounded
       if (recentUploads.length > 200) recentUploads.shift();
 
-      // Persist file metadata in DB for app-owned listing
       try {
         await prisma.file.create({
           data: {
@@ -578,7 +527,6 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
         console.warn("Failed to persist file metadata:", dbErr && dbErr.message);
       }
 
-      // mark TransferJob succeeded
       try {
         await prisma.transferJob.update({ where: { uploadId }, data: { status: 'succeeded', driveFileId } });
       } catch (e) { }
@@ -586,21 +534,18 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
       console.warn("Failed to record recent upload debug info", e && e.message);
     }
 
-    // Send 100%
     const entry = progressMap.get(uploadId);
     if (entry?.res) {
       entry.res.write(`data: ${JSON.stringify({ progress: 100 })}\n\n`);
       entry.res.end();
     }
 
-    // Update DB
     const fileSizeGb = fileSize / 1024 ** 3;
     await prisma.driveAccount.update({
       where: { userId_email: { userId, email: account.email } },
       data: { usedSpaceGb: { increment: fileSizeGb } },
     });
 
-    // remove temp file if on disk
     if (file.path) {
       try {
         fs.unlinkSync(file.path);
@@ -621,7 +566,6 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
       );
       entry.res.end();
     }
-    // remove temp file if on disk
     if (file && file.path) {
       try {
         fs.unlinkSync(file.path);
@@ -660,7 +604,6 @@ const listFiles = async (req, res) => {
         auth.setCredentials({ access_token });
         const drive = google.drive({ version: "v3", auth });
 
-        // Only list files we uploaded on behalf of this user (we tag with appProperties.uploaderId)
         const q = `trashed = false and appProperties has { key = 'uploaderId' and value = '${userId}' }`;
 
         const resp = await drive.files.list({
@@ -691,7 +634,6 @@ const listFiles = async (req, res) => {
       }
     }
 
-    // Sort by modifiedTime desc and apply global limit
     allFiles.sort((a, b) => (b.modifiedAt || "").localeCompare(a.modifiedAt || ""));
     const out = limit > 0 ? allFiles.slice(0, limit) : allFiles;
 
@@ -702,7 +644,6 @@ const listFiles = async (req, res) => {
   }
 };
 
-// DB-backed listing: return only files persisted by this app for the current user
 const getFiles = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -732,7 +673,6 @@ const getFiles = async (req, res) => {
     return;
   } catch (err) {
     console.error("getFiles error:", err);
-    // If DB isn't migrated yet or File model is missing, fall back to Drive-based listing
     try {
       console.warn("getFiles falling back to Drive listing due to DB error");
       return await listFiles(req, res);
@@ -748,8 +688,6 @@ const downloadFile = async (req, res) => {
   if (!id) return res.status(400).json({ message: "Missing file id" });
 
   try {
-    // Determine authenticated user either from middleware (Authorization header)
-    // or from optional token passed in query (used for preview streaming URLs).
     let userId = null;
     let tokenPayload = null;
     if (req.user && req.user.id) {
@@ -760,7 +698,6 @@ const downloadFile = async (req, res) => {
         tokenPayload = require("../utils/jwt").verifyToken(tokenToVerify);
         if (tokenPayload && tokenPayload.id) userId = tokenPayload.id;
       } catch (e) {
-        // ignore
       }
     }
 
@@ -768,20 +705,17 @@ const downloadFile = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // Ensure the file exists in our DB and belongs to the user
     const fileRec = await prisma.file.findUnique({ where: { driveFileId: id } });
     if (!fileRec || fileRec.userId !== userId) {
       return res.status(404).json({ message: "File not found or not owned by user" });
     }
 
-    // If tokenPayload exists and is a preview token, ensure it's bound to this file
     if (tokenPayload && tokenPayload.t === "preview") {
       if (tokenPayload.fileId !== id || tokenPayload.id !== userId) {
         return res.status(401).json({ message: "Invalid preview token for this file" });
       }
     }
 
-    // Helper to stream from a Drive account with optional Range support
     const tryStreamFromAccount = async (acc) => {
       if (!acc || !acc.refreshToken) return false;
       try {
@@ -812,7 +746,6 @@ const downloadFile = async (req, res) => {
         }
 
         if (rangeHeader) {
-          // parse range, e.g., 'bytes=0-1023'
           const m = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
           if (m) {
             const start = m[1] ? parseInt(m[1], 10) : 0;
@@ -832,7 +765,6 @@ const downloadFile = async (req, res) => {
           }
         }
 
-        // No range requested — stream whole file
         res.setHeader('Content-Length', String(size));
         const streamResp = await drive.files.get({ fileId: id, alt: 'media' }, { responseType: 'stream' });
         streamResp.data.pipe(res);
@@ -843,7 +775,6 @@ const downloadFile = async (req, res) => {
       }
     };
 
-    // Try stored account first
     if (fileRec.driveAccountId) {
       const acc = await prisma.driveAccount.findUnique({ where: { id: fileRec.driveAccountId } });
       if (acc) {
@@ -852,7 +783,6 @@ const downloadFile = async (req, res) => {
       }
     }
 
-    // Fallback: loop connected accounts
     const accounts = await prisma.driveAccount.findMany({ where: { userId } });
     for (const account of accounts) {
       const ok = await tryStreamFromAccount(account);
@@ -862,7 +792,6 @@ const downloadFile = async (req, res) => {
     res.status(404).json({ message: 'File not found in connected accounts' });
   } catch (err) {
     console.error("downloadFile error:", err);
-    // If headers already sent, can't send JSON
     if (!res.headersSent) res.status(500).json({ message: "Failed to download file" });
   }
 };
@@ -878,7 +807,6 @@ const debugRecentUploads = async (req, res) => {
   }
 };
 
-// GET /drive/transfers
 const getTransfers = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -906,12 +834,10 @@ const getTransfers = async (req, res) => {
   }
 };
 
-// SSE: subscribe to upload progress for a given uploadId
 const subscribeUploadProgress = async (req, res) => {
   const { uploadId } = req.params;
   if (!uploadId) return res.status(400).json({ message: 'Missing uploadId' });
 
-  // setup SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -925,7 +851,6 @@ const subscribeUploadProgress = async (req, res) => {
 
   entry.res = res;
 
-  // send initial event
   res.write(`data: ${JSON.stringify({ progress: entry.progress })}\n\n`);
 
   req.on('close', () => {
@@ -933,7 +858,6 @@ const subscribeUploadProgress = async (req, res) => {
   });
 };
 
-// Generate a short-lived preview token for a file owned by the user.
 const createPreviewToken = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -945,7 +869,6 @@ const createPreviewToken = async (req, res) => {
       return res.status(404).json({ message: "File not found or not owned by user" });
     }
 
-    // generate preview token bound to fileId
     const token = generatePreviewToken({ id: userId, email: req.user.email || "" }, fileId);
     res.json({ previewToken: token, expiresInSeconds: 60 });
   } catch (err) {

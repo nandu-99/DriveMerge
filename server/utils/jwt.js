@@ -17,7 +17,6 @@ const generateRefreshToken = (user, expiresIn = REFRESH_TOKEN_EXPIRY) => {
 };
 
 const generatePreviewToken = (user, fileId, expiresIn = "60s") => {
-  // fileId is bound into the token so it can't be reused for other files
   return jwt.sign({ id: user.id, email: user.email, fileId, t: "preview" }, JWT_SECRET, {
     expiresIn,
   });

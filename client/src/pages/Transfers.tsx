@@ -22,12 +22,10 @@ const Transfers = () => {
 
   const [running, setRunning] = useState(true);
 
-  // Focus on the most recent active upload, or the last completed one
   const activeUpload = uploads.find((u) => u.status === "uploading");
   const recentUpload = activeUpload || uploads[0] || null;
   const isUploading = recentUpload?.status === "uploading";
 
-  // "Virtual chunks" for visualization
   const totalChunks = useMemo(() => {
     if (!recentUpload) return 10;
     return Math.min(
@@ -36,7 +34,6 @@ const Transfers = () => {
     );
   }, [recentUpload]);
 
-  // Logs based on actual progress
   const logs = useMemo(() => {
     if (!recentUpload) {
       return [
@@ -114,7 +111,6 @@ const Transfers = () => {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
@@ -145,16 +141,12 @@ const Transfers = () => {
         </div>
       </div>
 
-      {/* Main Visualization Area */}
       <div className="border border-border rounded-lg bg-card p-8 min-h-[500px] relative overflow-hidden group flex flex-col">
-        {/* Soft page grid */}
         <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-[size:24px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-[0.12] pointer-events-none" />
 
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center flex-1">
-          {/* Source: The File — modern card with inner grid */}
           <div className="lg:col-span-3">
             <div className="relative p-6 rounded-2xl border border-border bg-gradient-to-b from-background to-muted/40 shadow-sm overflow-hidden">
-              {/* Inner grid background */}
               <div
                 className="
                   absolute inset-px rounded-[1.6rem]
@@ -169,7 +161,6 @@ const Transfers = () => {
               />
 
               <div className="relative z-10 flex flex-col items-center gap-4 py-8">
-                {/* Icon + glow */}
                 <div className="relative">
                   <div
                     className={cn(
@@ -205,7 +196,6 @@ const Transfers = () => {
                   )}
                 </div>
 
-                {/* Text */}
                 <div className="text-center space-y-1">
                   <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
                     Source file
@@ -220,7 +210,6 @@ const Transfers = () => {
                   </p>
                 </div>
 
-                {/* Status pill */}
                 <div className="mt-2">
                   <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-background/80 border border-border text-[11px] text-muted-foreground">
                     {isUploading ? (
@@ -243,9 +232,7 @@ const Transfers = () => {
             </div>
           </div>
 
-          {/* Middle: The Pipeline */}
           <div className="lg:col-span-6 relative h-full min-h-[200px] flex flex-col items-center justify-center">
-            {/* Connection Lines */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <svg className="w-full h-20 overflow-visible">
                 <defs>
@@ -282,7 +269,6 @@ const Transfers = () => {
               </svg>
             </div>
 
-            {/* Flying Chunks Animation */}
             <div className="relative w-full h-24 flex items-center overflow-hidden">
               <AnimatePresence>
                 {running &&
@@ -312,7 +298,6 @@ const Transfers = () => {
               </AnimatePresence>
             </div>
 
-            {/* Status chip in the middle */}
             <div className="mt-8 text-center">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-background/80 border border-border backdrop-blur-md text-xs font-medium text-muted-foreground">
                 {isUploading ? (
@@ -332,7 +317,6 @@ const Transfers = () => {
             </div>
           </div>
 
-          {/* Destination: Accounts */}
           <div className="lg:col-span-3 flex flex-col gap-4 h-full justify-center">
             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
               {accounts.map((account, index) => (
@@ -413,9 +397,7 @@ const Transfers = () => {
         </div>
       </div>
 
-      {/* Vercel-style Live Logs */}
       <div className="rounded-lg overflow-hidden border border-border bg-card shadow-sm flex flex-col h-[400px]">
-        {/* Live Mode Bar */}
         <div className="flex items-center justify-between px-4 py-2 bg-muted/30 border-b border-border">
           <div className="flex items-center gap-2">
             <div className="relative flex h-2 w-2">
@@ -433,7 +415,6 @@ const Transfers = () => {
           </div>
         </div>
 
-        {/* Logs Header */}
         <div className="grid grid-cols-12 gap-4 px-4 py-2 border-b border-border bg-muted/50 text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
           <div className="col-span-2">Time</div>
           <div className="col-span-1">Status</div>
@@ -441,7 +422,6 @@ const Transfers = () => {
           <div className="col-span-6">Message</div>
         </div>
 
-        {/* Logs Body */}
         <div className="flex-1 p-2 font-mono text-xs overflow-y-auto custom-scrollbar bg-card">
           <AnimatePresence mode="popLayout">
             {logs.map((log, i) => (
@@ -451,12 +431,10 @@ const Transfers = () => {
                 animate={{ opacity: 1, x: 0 }}
                 className="grid grid-cols-12 gap-4 px-2 py-1.5 hover:bg-muted/50 rounded transition-colors group"
               >
-                {/* Time */}
                 <div className="col-span-2 text-muted-foreground truncate">
                   {log.time}
                 </div>
 
-                {/* Status */}
                 <div className="col-span-1">
                   <span
                     className={cn(
@@ -480,7 +458,6 @@ const Transfers = () => {
                   </span>
                 </div>
 
-                {/* Path */}
                 <div className="col-span-3 text-muted-foreground/80 truncate font-medium">
                   {log.type === "start"
                     ? "/upload/init"
@@ -491,7 +468,6 @@ const Transfers = () => {
                         : "/upload/chunk"}
                 </div>
 
-                {/* Message */}
                 <div
                   className={cn(
                     "col-span-6 truncate",

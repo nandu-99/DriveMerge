@@ -143,7 +143,6 @@ export default function FileBrowser() {
     }
     console.log("File to preview:", f);
     try {
-      // Request a short-lived preview token from the server (safer than sharing long-lived tokens)
       const token =
         typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
       if (!token) {
@@ -177,7 +176,6 @@ export default function FileBrowser() {
         return;
       }
 
-      // Use the preview token in the streaming URL. The token is short-lived and bound to the file.
       const url = `${API_BASE}/drive/files/download?id=${encodeURIComponent(
         id
       )}&preview=1&preview_token=${encodeURIComponent(previewToken)}`;
@@ -198,25 +196,13 @@ export default function FileBrowser() {
 
   return (
     <div className="space-y-4 p-4 sm:p-6">
-      {/* Header - Mobile Responsive */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl sm:text-3xl font-semibold">Files</h1>
 
-        {/* Controls - Responsive Layout */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          {/* Search Bar - Mobile Toggle */}
           <div className="relative">
-            {/* Mobile: Icon button to toggle search */}
-            {/* <button
-              onClick={() => setSearchOpen(!searchOpen)}
-              className="sm:hidden w-full px-3 py-2 rounded-md bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center gap-2"
-              aria-label="Toggle search"
-            >
-              <Search className="h-4 w-4" />
-              <span className="text-sm">Search</span>
-            </button> */}
 
-            {/* Desktop: Always visible search */}
+
             <div className="w-80 sm:w-64">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -229,32 +215,16 @@ export default function FileBrowser() {
               </div>
             </div>
 
-            {/* Mobile: Expandable search */}
-            {/* {searchOpen && (
-              <div className="sm:hidden mt-2 w-full">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <input
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search files..."
-                    className="w-full pl-9 pr-3 py-2 border rounded-md bg-white/5 focus:bg-white/10 transition-colors"
-                    autoFocus
-                  />
-                </div>
-              </div>
-            )} */}
+
           </div>
 
-          {/* View Controls */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => setView("grid")}
-              className={`flex-1 sm:flex-none px-3 py-2 rounded-md transition-all flex items-center justify-center gap-2 ${
-                view === "grid"
-                  ? "bg-primary text-primary-foreground shadow-md"
-                  : "bg-white/10 hover:bg-white/20"
-              }`}
+              className={`flex-1 sm:flex-none px-3 py-2 rounded-md transition-all flex items-center justify-center gap-2 ${view === "grid"
+                ? "bg-primary text-primary-foreground shadow-md"
+                : "bg-white/10 hover:bg-white/20"
+                }`}
               aria-pressed={view === "grid"}
               aria-label="Grid view"
             >
@@ -263,11 +233,10 @@ export default function FileBrowser() {
             </button>
             <button
               onClick={() => setView("list")}
-              className={`flex-1 sm:flex-none px-3 py-2 rounded-md transition-all flex items-center justify-center gap-2 ${
-                view === "list"
-                  ? "bg-primary text-primary-foreground shadow-md"
-                  : "bg-white/10 hover:bg-white/20"
-              }`}
+              className={`flex-1 sm:flex-none px-3 py-2 rounded-md transition-all flex items-center justify-center gap-2 ${view === "list"
+                ? "bg-primary text-primary-foreground shadow-md"
+                : "bg-white/10 hover:bg-white/20"
+                }`}
               aria-pressed={view === "list"}
               aria-label="List view"
             >
@@ -286,14 +255,12 @@ export default function FileBrowser() {
         </div>
       </div>
 
-      {/* Loading State */}
       {isLoading && (
         <div className="text-sm text-muted-foreground text-center py-8">
           Loading files...
         </div>
       )}
 
-      {/* Empty State */}
       {filtered.length === 0 && !isLoading && (
         <div className="text-center py-12">
           <div className="text-muted-foreground mb-2">No files found</div>
@@ -308,7 +275,6 @@ export default function FileBrowser() {
         </div>
       )}
 
-      {/* Files Display */}
       {view === "list" ? (
         <div className="space-y-2 sm:space-y-3">
           {filtered.map((f: FileEntry) => (
@@ -335,7 +301,6 @@ export default function FileBrowser() {
         </div>
       )}
 
-      {/* Preview Modal - Responsive */}
       {preview && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 sm:p-6"

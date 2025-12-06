@@ -26,13 +26,11 @@ interface FileUploadProps {
   maxFileSize?: number;
   currentFile?: File | null;
   onFileRemove?: () => void;
-  /** Duration in milliseconds for the upload simulation. Defaults to 2000ms (2s), 0 for no simulation */
   uploadDelay?: number;
   validateFile?: (file: File) => FileError | null;
   className?: string;
 }
 
-// Increase default max file size to 20 GB on the client (can be overridden via props)
 const DEFAULT_MAX_FILE_SIZE = 20 * 1024 * 1024 * 1024; // 20GB
 const UPLOAD_STEP_SIZE = 5;
 const FILE_SIZES = [
@@ -249,7 +247,6 @@ export default function FileUpload({
     useUploads();
   const uploadIdRef = useRef<string | null>(null);
 
-  // no-op cleanup (uploads are handled via XHR and cleaned up per-request)
   useEffect(() => {
     return () => {};
   }, []);
@@ -301,7 +298,6 @@ export default function FileUpload({
 
   const simulateUpload = useCallback(
     (uploadingFile: File) => {
-      // Perform real upload to backend using XHR so we can track progress
       if (
         typeof window !== "undefined" &&
         typeof console?.debug === "function"
@@ -320,7 +316,6 @@ export default function FileUpload({
       const form = new FormData();
       form.append("files", uploadingFile, uploadingFile.name);
 
-      // optional: send preferred drive account id if user selected one elsewhere in the app
       try {
         const preferred = localStorage.getItem("dm_selected_account");
         if (preferred) form.append("driveAccountId", preferred);
@@ -331,12 +326,10 @@ export default function FileUpload({
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url, true);
 
-      // set auth header if available
       try {
         const token = localStorage.getItem("dm_token");
         if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
       } catch (e) {
-        // ignore (SSR safety)
       }
 
       xhr.upload.onprogress = (e: ProgressEvent<EventTarget>) => {
@@ -354,7 +347,6 @@ export default function FileUpload({
 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          // parse server response for upload tasks (server returns upload ids)
           let serverResp = null;
           try {
             serverResp = JSON.parse(xhr.responseText || '{}');
@@ -367,7 +359,6 @@ export default function FileUpload({
           if (uploadIdRef.current) markDone(uploadIdRef.current);
           onUploadSuccess?.(uploadingFile);
 
-          // subscribe to server-side upload progress if server returned an upload id
           try {
             const firstId = serverResp?.[0]?.id || serverResp?.id || (serverResp?.tasks && serverResp.tasks[0]?.id);
             const token = localStorage.getItem("dm_token");
@@ -451,10 +442,8 @@ export default function FileUpload({
     (selectedFile: File | null) => {
       if (!selectedFile) return;
 
-      // Reset error state
       setError(null);
 
-      // Validate file
       const sizeError = validateFileSize(selectedFile);
       if (sizeError) {
         handleError(sizeError);
@@ -476,7 +465,6 @@ export default function FileUpload({
       setFile(selectedFile);
       setStatus("uploading");
       setProgress(0);
-      // create shared upload entry
       try {
         const id = addUpload({
           id: String(Date.now()) + Math.random().toString(36).slice(2, 8),
@@ -485,7 +473,6 @@ export default function FileUpload({
         });
         uploadIdRef.current = id;
       } catch (e) {
-        // ignore
       }
       simulateUpload(selectedFile);
     },
@@ -499,7 +486,6 @@ export default function FileUpload({
     ]
   );
 
-  // Use a counter to avoid dragenter/dragleave flicker when hovering children
   const dragCounter = useRef(0);
 
   const handleDragEnter = useCallback(

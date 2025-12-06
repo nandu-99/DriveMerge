@@ -11,9 +11,6 @@ interface TransferLogsProps {
 }
 
 export function TransferLogs({ logs, className, running = true }: TransferLogsProps) {
-    // We'll treat the logs as a sequence of steps.
-    // The last log is usually the "current" or "active" one if running,
-    // unless it says "completed".
 
     const parsedLogs = useMemo(() => {
         return logs.map((log, index) => {
@@ -22,48 +19,15 @@ export function TransferLogs({ logs, className, running = true }: TransferLogsPr
             const isError = log.toLowerCase().includes("failed") || log.toLowerCase().includes("error");
             const isPending = !isLast && !isCompleted && !isError; // Previous steps are assumed done
 
-            // In this specific "re-calculated" log system from Transfers.tsx, 
-            // the list grows/changes. But actually it looks like it returns a fixed set of *current status messages* rather than a history.
-            // Wait, Transfers.tsx returns an array like [msg1, msg2, msg3].
-            // If it returns [msg1, msg2], it means we are at step 2?
-            // Actually looking at Transfers.tsx:
-            // return [ "Starting...", "Splitting...", "Allocating...", "Uploading...", "Progress..." ]
-            // It returns ALL of them up to the current state? 
-            // No, looking at the code:
-            // return [ `Starting...`, `Splitting...`, `Allocating...`, `Uploading...`, `Progress...` ]
-            // It returns a FIXED array of 5 items every time roughly?
-            // Let's re-read Transfers.tsx logic carefully.
 
-            /*
-            return [
-              `Starting file upload...`,
-              `Splitting file into ${chunks} chunks...`,
-              `Allocating chunks...`,
-              `Uploading chunk...`,
-              prog >= 100 ? `Upload completed...` : `Progress: ${prog}%`,
-            ];
-            */
 
-            // It always returns these 5 lines! It creates them new every render.
-            // So they are basically "steps" of the process.
-            // We should render them as a list of steps.
+
 
             let status: "pending" | "loading" | "success" | "error" = "success";
 
-            // Customize status based on index and progress
-            // Since `Transfers.tsx` always returns all 5, we need to guess the active one.
-            // Actually, line 4 (index 3) is "Uploading chunk X/Y".
-            // Line 5 (index 4) is "Progress" or "Completed".
 
-            // If "Progress" is < 100, then "Uploading" is active.
-            // If "Progress" is 100, then "Uploading" is done.
 
-            // Let's simplify:
-            // If the log text contains "Progress:", it's the active status line.
-            // If it says "Uploading chunk", it's also active/ongoing.
-            // But purely based on text is brittle.
 
-            // However, for the visual effect:
             if (isError) status = "error";
             else if (isCompleted) status = "success";
             else if (log.includes("Progress:")) status = "loading";
@@ -126,7 +90,6 @@ export function TransferLogs({ logs, className, running = true }: TransferLogsPr
                             </div>
 
                             <div className="shrink-0 text-xs text-muted-foreground/50 tabular-nums select-none">
-                                {/* We don't have real timestamps, so maybe omit or show a relative time if we tracked it */}
                                 00:0{i}s
                             </div>
                         </motion.div>
