@@ -1,4 +1,5 @@
 import { Home, Settings, Eye, Plus, HardDrive, LogOut, History } from "lucide-react";
+import { formatBytes } from "@/lib/utils";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -40,7 +41,7 @@ export function AppSidebar() {
   return (
     <Sidebar className="border-r border-sidebar-border bg-sidebar-background">
       <SidebarContent className="bg-sidebar-background p-4">
-        {}
+
         <div className="px-2 mb-6">
           <div
           >
@@ -58,11 +59,11 @@ export function AppSidebar() {
                 el.style.display = "none";
               }}
             />{" "}
-            {}
+
           </div>
         </div>
 
-        {}
+
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2">Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -88,7 +89,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {}
+
         {!collapsed && (
           <SidebarGroup className="mt-8">
             <SidebarGroupLabel className="flex items-center justify-between text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2">
@@ -136,23 +137,25 @@ export function AppSidebar() {
                   return (
                     <div
                       key={acct.id}
-                      className="border border-sidebar-border rounded-md p-3 space-y-2 bg-sidebar-accent/30 hover:border-sidebar-primary/20 transition-colors"
+                      className="group/item border border-transparent hover:border-sidebar-border rounded-md p-2 space-y-1.5 hover:bg-sidebar-accent/50 transition-all duration-200"
                     >
                       <div className="flex items-center gap-3">
-                        <HardDrive className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <div className="p-1.5 rounded-md bg-sidebar-accent text-sidebar-foreground/70 group-hover/item:text-sidebar-foreground group-hover/item:bg-background shadow-none group-hover/item:shadow-sm transition-all">
+                          <HardDrive className="h-3.5 w-3.5" />
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs font-medium text-foreground truncate font-mono">
+                          <div className="text-xs font-medium text-foreground/90 truncate font-mono tracking-tight group-hover/item:text-foreground">
                             {acct.email}
                           </div>
-                          <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                            {used} GB / {total} GB
+                          <div className="text-[10px] text-muted-foreground/80 font-mono mt-0.5 group-hover/item:text-muted-foreground">
+                            {formatBytes(used)} of {formatBytes(total)} used
                           </div>
                         </div>
                       </div>
-                      <div className="w-full">
-                        <div className="h-1 bg-sidebar-border rounded-full overflow-hidden">
+                      <div className="w-full px-0.5">
+                        <div className="h-1 bg-sidebar-border/50 rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-sidebar-primary rounded-full transition-all"
+                            className="h-full bg-sidebar-primary/80 group-hover/item:bg-sidebar-primary rounded-full transition-all"
                             style={{ width: `${percentage}%` }}
                           />
                         </div>
@@ -165,7 +168,7 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        {}
+
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>

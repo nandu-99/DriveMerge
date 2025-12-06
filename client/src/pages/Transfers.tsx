@@ -354,14 +354,10 @@ const Transfers = () => {
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-[10px] text-muted-foreground">
                       <span>Storage</span>
-                      <span>
-                        {account.used_space && account.total_space
-                          ? `${Math.round(
-                            (account.used_space /
-                              account.total_space) *
-                            100
-                          )}%`
-                          : "0%"}
+                      <span className="font-mono">
+                        {account.used_space !== undefined && account.total_space
+                          ? `${formatBytes(account.used_space)} / ${formatBytes(account.total_space)}`
+                          : "0 B / 0 B"}
                       </span>
                     </div>
                     <div className="h-1.5 bg-muted rounded-full overflow-hidden">
