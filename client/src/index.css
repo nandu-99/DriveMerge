@@ -1,122 +1,119 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('./components/ui/animations.css');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here.
-All colors MUST be HSL.
-*/
-
 @layer base {
   :root {
-    /* Minimal modern theme (light background, neutral greys, subtle accent) */
+    
     --background: 0 0% 100%;
-    /* Pure white */
-    --foreground: 215 12% 12%;
-    /* dark text */
+    
+    --foreground: 0 0% 0%;
+    
 
-    /* Card / surface */
     --card: 0 0% 100%;
-    --card-foreground: 215 12% 12%;
-    --glass-bg: 0 0% 100%;
-    --glass-border: 210 15% 94%;
-    /* lighter border */
+    --card-foreground: 0 0% 0%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 215 12% 12%;
+    --popover-foreground: 0 0% 0%;
 
-    /* Primary accent: muted indigo */
-    --primary: 224 40% 14%;
-    /* dark indigo for buttons */
+    --primary: 0 0% 0%;
+    
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 10% 96%;
-    /* Very light grey for secondary */
-    --secondary-foreground: 215 12% 12%;
+    --secondary: 0 0% 96.1%;
+    
+    --secondary-foreground: 0 0% 9%;
 
-    --muted: 210 10% 96%;
-    --muted-foreground: 215 10% 45%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
 
-    --accent: 205 80% 45%;
-    /* subtle cyan accent */
-    --accent-foreground: 0 0% 100%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
 
-    --destructive: 0 75% 45%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 210 12% 92%;
-    --input: 210 12% 92%;
-    --ring: 224 40% 14%;
+    --border: 0 0% 89.8%;
+    
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 0%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
-    /* Sidebar */
-    --sidebar-background: 210 18% 98%;
-    --sidebar-foreground: 215 12% 12%;
-    --sidebar-primary: 224 40% 14%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 210 12% 96%;
-    --sidebar-accent-foreground: 215 12% 12%;
-    --sidebar-border: 210 12% 92%;
-    --sidebar-ring: 224 40% 14%;
+    --sidebar-background: 0 0% 98%;
+    
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
 
-    /* No gradients for a flat, minimal look */
-    --gradient-primary: none;
-    --gradient-glass: none;
+    --glass-bg: 0 0% 100%;
+    --glass-border: 0 0% 89.8%;
 
-    /* Subtle shadows */
-    --shadow-glass: 0 4px 20px -2px rgba(16, 24, 40, 0.08);
-    --shadow-glow: 0 0 15px rgba(16, 24, 40, 0.05);
-    --shadow-elevated: 0 12px 32px -4px rgba(16, 24, 40, 0.1);
+    --shadow-glass: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+    --shadow-elevated: 0 12px 32px -4px rgba(0, 0, 0, 0.1);
   }
 
   .dark {
-    /* Dark variant — modern minimal dark */
-    --background: 220 15% 8%;
-    /* slightly blue-tinted dark */
-    --foreground: 210 10% 96%;
+    
+    --background: 0 0% 0%;
+    
+    --foreground: 0 0% 98%;
 
-    --card: 220 15% 10%;
-    --card-foreground: 210 10% 96%;
-    --glass-bg: 220 15% 10%;
-    --glass-border: 215 15% 18%;
+    --card: 0 0% 3.9%;
+    
+    --card-foreground: 0 0% 98%;
 
-    --popover: 220 15% 10%;
-    --popover-foreground: 210 10% 96%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 224 50% 65%;
-    --primary-foreground: 210 10% 6%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 0%;
 
-    --secondary: 215 15% 20%;
-    --secondary-foreground: 210 10% 96%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 215 10% 30%;
-    --muted-foreground: 215 10% 60%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
 
-    --accent: 205 80% 60%;
-    --accent-foreground: 210 10% 6%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
 
-    --destructive: 0 75% 55%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 215 15% 18%;
-    --input: 215 15% 18%;
-    --ring: 224 50% 65%;
+    --border: 0 0% 14.9%;
+    
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
 
-    --sidebar-background: 220 15% 7%;
-    --sidebar-foreground: 210 10% 96%;
-    --sidebar-primary: 224 50% 65%;
-    --sidebar-primary-foreground: 210 10% 6%;
-    --sidebar-accent: 215 15% 14%;
-    --sidebar-accent-foreground: 210 10% 96%;
-    --sidebar-border: 215 15% 18%;
-    --sidebar-ring: 224 50% 65%;
+    --sidebar-background: 0 0% 0%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 0 0% 14.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 0 0% 14.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    --glass-bg: 0 0% 3.9%;
+    --glass-border: 0 0% 14.9%;
+    --shadow-glass: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+    --shadow-elevated: 0 12px 32px -4px rgba(0, 0, 0, 0.5);
   }
 }
 
 @layer base {
   * {
     box-sizing: border-box;
-    /* default element border color using design token */
+    
     border-color: hsl(var(--border));
   }
 
@@ -124,9 +121,24 @@ All colors MUST be HSL.
     background: hsl(var(--background));
     color: hsl(var(--foreground));
     min-height: 100vh;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+      Roboto, "Helvetica Neue", Arial;
   }
 
-  /* sensible default typography for a modern UI */
+  
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+      Roboto, "Helvetica Neue", Arial;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+  }
+
+  
   body,
   input,
   button,
@@ -141,7 +153,7 @@ All colors MUST be HSL.
 
 @layer utilities {
   .glass {
-    /* flat card look: white surface with subtle border and shadow */
+    
     background: hsl(var(--card));
     border: 1px solid hsl(var(--glass-border));
     box-shadow: var(--shadow-glass);
@@ -152,7 +164,7 @@ All colors MUST be HSL.
     padding: 1rem;
     background: hsl(var(--card));
     box-shadow: var(--shadow-elevated);
-    /* subtle translucent glass effect on supported browsers */
+    
     border: 1px solid hsl(var(--glass-border) / 0.6);
     backdrop-filter: blur(6px) saturate(120%);
   }
@@ -166,16 +178,16 @@ All colors MUST be HSL.
   }
 
   .btn-glass {
-    /* replicate glass + spacing + rounded + transition + hover/active behavior */
+    
     background: hsl(var(--card));
     border: 1px solid hsl(var(--glass-border));
     box-shadow: var(--shadow-glass);
     padding: 0.75rem 1.5rem;
-    /* py-3 px-6 */
+    
     border-radius: 0.75rem;
-    /* rounded-xl */
+    
     font-weight: 500;
-    /* font-medium */
+    
     transition: transform 0.12s ease, box-shadow 0.12s ease,
       background-color 0.12s ease;
   }
@@ -190,7 +202,7 @@ All colors MUST be HSL.
   }
 
   .btn-primary-glass {
-    /* flat primary button */
+    
     padding: 0.6rem 1.25rem;
     border-radius: 0.9rem;
     font-weight: 600;
@@ -246,8 +258,8 @@ All colors MUST be HSL.
     transform: translateY(-1px);
   }
 
-  /* From Uiverse.io by vinodjangid07 — loading truck styles */
-  /* Loader container */
+  
+  
   .loader {
     width: fit-content;
     height: fit-content;
@@ -267,7 +279,7 @@ All colors MUST be HSL.
     overflow-x: hidden;
   }
 
-  /* truck upper body */
+  
   .truckBody {
     width: 130px;
     height: fit-content;
@@ -275,7 +287,7 @@ All colors MUST be HSL.
     animation: motion 1s linear infinite;
   }
 
-  /* truck suspension animation*/
+  
   @keyframes motion {
     0% {
       transform: translateY(0px);
@@ -290,7 +302,7 @@ All colors MUST be HSL.
     }
   }
 
-  /* truck's tires */
+  
   .truckTires {
     width: 130px;
     height: fit-content;
@@ -358,7 +370,15 @@ All colors MUST be HSL.
     }
   }
 
-  /* Full-page centered loader wrapper for page-level loading */
+  .bg-grid-light {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.1) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.1) 1px, transparent 1px);
+    background-size: 24px 24px;
+    border-radius: var(--radius);
+  }
+
+  
   .page-loader {
     position: fixed;
     inset: 0;
@@ -366,7 +386,7 @@ All colors MUST be HSL.
     align-items: center;
     justify-content: center;
     z-index: 60;
-    /* subtle overlay to indicate loading state; adapts using color tokens */
+    
     background: color-mix(in srgb, hsl(var(--card)) 80%, transparent);
   }
 

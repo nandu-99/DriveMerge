@@ -83,6 +83,7 @@ const updateProfile = async (req, res) => {
       return res.status(400).json({ message: "Nothing to update" });
     }
 
+    // if email provided, ensure it's not used by another user
     if (email) {
       const existing = await prisma.user.findUnique({ where: { email } });
       if (existing && existing.id !== userId) {

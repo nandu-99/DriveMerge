@@ -16,7 +16,7 @@ export function useConnectedAccounts() {
     queryFn: async () => {
       try {
         const data = await apiGet("/drive/accounts");
-        // Expecting array of { email, usedSpace, totalSpace }
+        
         if (!Array.isArray(data)) return [];
         return data.map((a: Record<string, unknown>) => ({
           id: String(a.email ?? ""),
@@ -26,7 +26,7 @@ export function useConnectedAccounts() {
           provider: "google",
         }));
       } catch (err) {
-        // On error (unauthenticated or server down), return empty list
+        
         return [];
       }
     },

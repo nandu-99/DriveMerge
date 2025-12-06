@@ -12,7 +12,7 @@ export type UploadItem = {
   id: string;
   name: string;
   size: number;
-  progress: number; // 0-100
+  progress: number; 
   status: UploadStatus;
   startedAt: string;
 };

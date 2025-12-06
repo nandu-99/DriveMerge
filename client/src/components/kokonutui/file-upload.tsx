@@ -230,12 +230,12 @@ const UploadingAnimation = ({ progress }: { progress: number }) => (
 );
 
 export default function FileUpload({
-  onUploadSuccess = () => { },
-  onUploadError = () => { },
+  onUploadSuccess = () => {},
+  onUploadError = () => {},
   acceptedFileTypes = [],
   maxFileSize = DEFAULT_MAX_FILE_SIZE,
   currentFile: initialFile = null,
-  onFileRemove = () => { },
+  onFileRemove = () => {},
   uploadDelay = 2000,
   validateFile = () => null,
   className,
@@ -249,8 +249,9 @@ export default function FileUpload({
     useUploads();
   const uploadIdRef = useRef<string | null>(null);
 
+  // no-op cleanup (uploads are handled via XHR and cleaned up per-request)
   useEffect(() => {
-    return () => { };
+    return () => {};
   }, []);
 
   const validateFileSize = useCallback(
@@ -300,7 +301,7 @@ export default function FileUpload({
 
   const simulateUpload = useCallback(
     (uploadingFile: File) => {
-
+      // Perform real upload to backend using XHR so we can track progress
       if (
         typeof window !== "undefined" &&
         typeof console?.debug === "function"
@@ -319,7 +320,7 @@ export default function FileUpload({
       const form = new FormData();
       form.append("files", uploadingFile, uploadingFile.name);
 
-
+      // optional: send preferred drive account id if user selected one elsewhere in the app
       try {
         const preferred = localStorage.getItem("dm_selected_account");
         if (preferred) form.append("driveAccountId", preferred);
@@ -330,12 +331,12 @@ export default function FileUpload({
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url, true);
 
-
+      // set auth header if available
       try {
         const token = localStorage.getItem("dm_token");
         if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
       } catch (e) {
-
+        // ignore (SSR safety)
       }
 
       xhr.upload.onprogress = (e: ProgressEvent<EventTarget>) => {
@@ -353,7 +354,7 @@ export default function FileUpload({
 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-
+          // parse server response for upload tasks (server returns upload ids)
           let serverResp = null;
           try {
             serverResp = JSON.parse(xhr.responseText || '{}');
@@ -361,72 +362,49 @@ export default function FileUpload({
             serverResp = null;
           }
 
+          setProgress(100);
+          setStatus("idle");
+          if (uploadIdRef.current) markDone(uploadIdRef.current);
           onUploadSuccess?.(uploadingFile);
 
+          // subscribe to server-side upload progress if server returned an upload id
           try {
             const firstId = serverResp?.[0]?.id || serverResp?.id || (serverResp?.tasks && serverResp.tasks[0]?.id);
             const token = localStorage.getItem("dm_token");
-
             if (firstId && typeof window !== 'undefined') {
               const esUrl = token
                 ? `/drive/upload/progress/${encodeURIComponent(firstId)}?access_token=${encodeURIComponent(token)}`
                 : `/drive/upload/progress/${encodeURIComponent(firstId)}`;
-
               const es = new EventSource(esUrl);
-
               es.onmessage = (ev) => {
                 try {
                   const d = JSON.parse(ev.data || '{}');
                   if (typeof d.progress === 'number') {
-
                     setProgress(d.progress);
                     updateProgress(firstId, d.progress);
-
-                    if (d.progress >= 100) {
-                      es.close();
-                      setStatus("idle");
-                      if (uploadIdRef.current) markDone(uploadIdRef.current);
-
-                      setTimeout(() => {
-                        if (uploadIdRef.current) removeUpload(uploadIdRef.current);
-                        uploadIdRef.current = null;
-                      }, 2000);
-                    }
-                  }
-                  if (d.error) {
-                    es.close();
-                    const err = { message: d.error, code: "UPLOAD_REMOTE_FAILED" };
-                    setError(err);
-                    setStatus("error");
-                    if (uploadIdRef.current) markError(uploadIdRef.current);
                   }
                 } catch (err) {
                   console.debug('sse:parse', err);
                 }
               };
-
               es.onerror = (err) => {
                 console.debug('sse:error', err);
                 es.close();
-
               };
-            } else {
-              setProgress(100);
-              setStatus("idle");
-              if (uploadIdRef.current) markDone(uploadIdRef.current);
             }
           } catch (err) {
             console.debug('subscribe sse failed', err);
-            setProgress(100);
-            setStatus("idle");
-            if (uploadIdRef.current) markDone(uploadIdRef.current);
           }
 
+          setTimeout(() => {
+            if (uploadIdRef.current) removeUpload(uploadIdRef.current);
+            uploadIdRef.current = null;
+          }, 2000);
           if (
             typeof window !== "undefined" &&
             typeof console?.debug === "function"
           ) {
-            console.debug("FileUpload: server upload done, waiting for drive...", uploadingFile.name);
+            console.debug("FileUpload:done", uploadingFile.name);
           }
         } else {
           const err = {
@@ -473,7 +451,7 @@ export default function FileUpload({
     (selectedFile: File | null) => {
       if (!selectedFile) return;
 
-
+      // Reset error state
       setError(null);
 
       // Validate file
@@ -498,7 +476,7 @@ export default function FileUpload({
       setFile(selectedFile);
       setStatus("uploading");
       setProgress(0);
-
+      // create shared upload entry
       try {
         const id = addUpload({
           id: String(Date.now()) + Math.random().toString(36).slice(2, 8),
@@ -659,9 +637,9 @@ export default function FileUpload({
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         {acceptedFileTypes?.length
                           ? `${acceptedFileTypes
-                            .map((t) => t.split("/")[1])
-                            .join(", ")
-                            .toUpperCase()}`
+                              .map((t) => t.split("/")[1])
+                              .join(", ")
+                              .toUpperCase()}`
                           : "Any file type"}{" "}
                         {maxFileSize && `up to ${formatBytes(maxFileSize)}`}
                       </p>

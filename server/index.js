@@ -1,6 +1,6 @@
-// Load .env and override any existing environment variables so local dev .env values
-// (like DATABASE_URL) are used instead of a global shell value that may point to a
-// different DB (e.g. Postgres). In production you may want to remove `override: true`.
+
+
+
 require("dotenv").config({ override: true });
 const express = require("express");
 const cors = require("cors");
@@ -12,10 +12,11 @@ const driveRoutes = require("./routes/driveRoutes");
 const app = express();
 
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
 
-// Request logging
+
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`, req.query);
   next();

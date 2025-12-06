@@ -13,13 +13,6 @@ export default function ProtectedRoute({ children }: Props) {
 
   useEffect(() => {
     let mounted = true;
-    const token = localStorage.getItem("dm_token");
-    if (!token) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-
     (async () => {
       try {
         const profile = await apiGet("/auth/me");
@@ -27,9 +20,7 @@ export default function ProtectedRoute({ children }: Props) {
         if (profile?.id) setUser({ id: String(profile.id) });
         else setUser(null);
       } catch (err) {
-        // invalid token or server failure
-        // localStorage.removeItem("dm_token");
-        // localStorage.removeItem("dm_user_id");
+        
         setUser(null);
       } finally {
         if (mounted) setLoading(false);

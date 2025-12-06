@@ -51,88 +51,93 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="glass-card max-w-md w-full p-8">
-      <div className="px-3 mb-2">
-          <div
-          >
-            <img
-              src="/DriveMergeLogo.png"
-              alt="DriveMerge"
-              className={
-                  "object-contain h-14 mx-auto rounded-md p-0.5 bg-white/5"
-              }
-              style={{ display: "block" }}
-              onError={(e) => {
-                const el = e.currentTarget as HTMLImageElement;
-                el.style.display = "none";
-              }}
-            />{" "}
-            {/* <span className="sr-only">DriveMerge</span> */}
+    <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+      <div className="border border-border rounded-lg bg-card max-w-md w-full p-8 shadow-sm">
+        <div className="flex justify-center mb-6">
+          <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
+            <span className="text-xl font-bold text-primary">DM</span>
           </div>
         </div>
-        <h1 className="text-2xl font-semibold mb-2">Create account</h1>
-        <p className="text-sm text-muted-foreground mb-6">
-          Start using DriveMerge to unify your cloud storage
-        </p>
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Create an account</h1>
+          <p className="text-sm text-muted-foreground mt-2">
+            Start using DriveMerge to unify your cloud storage
+          </p>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Full name</label>
+          <div className="space-y-2">
+            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground">Full Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              className="input-style"
+              className="flex h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="John Doe"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
+          <div className="space-y-2">
+            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="input-style"
+              className="flex h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="name@example.com"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Password</label>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="input-style"
+              className="flex h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="••••••••"
             />
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="pt-2">
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary-glass w-full"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 w-full"
             >
               {loading ? "Creating..." : "Create account"}
             </button>
-            <div className="text-center">
-              <Link
-                to="/login"
-                className="text-sm text-muted-foreground underline"
-              >
-                Already have an account?
-              </Link>
-            </div>
           </div>
         </form>
 
-        <div className="mt-4">
-          <div className="text-center text-sm text-muted-foreground mb-2">
-            or
+        <div className="mt-6">
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">
+                Or continue with
+              </span>
+            </div>
           </div>
-          <GoogleSignButton />
+          <div className="mt-6">
+            <GoogleSignButton />
+          </div>
         </div>
+
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          Already have an account?{" "}
+          <Link
+            to="/login"
+            className="underline underline-offset-4 hover:text-primary font-medium text-foreground"
+          >
+            Sign in
+          </Link>
+        </p>
       </div>
     </div>
   );
