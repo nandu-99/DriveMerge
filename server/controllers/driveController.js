@@ -109,9 +109,10 @@ const getAccounts = async (req, res) => {
     const userId = req.user.id;
     const accounts = await prisma.driveAccount.findMany({
       where: { userId },
-      select: { email: true, usedSpaceGb: 1, totalSpaceGb: 1 },
+      select: { id: true, email: true, usedSpaceGb: 1, totalSpaceGb: 1 },
     });
     const formatted = accounts.map((a) => ({
+      id: a.id,
       email: a.email,
       usedSpace: Number(a.usedSpaceGb.toFixed(1)),
       totalSpace: Number(a.totalSpaceGb.toFixed(1)),

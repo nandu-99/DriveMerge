@@ -8,9 +8,11 @@ import {
   useEffect,
 } from "react";
 import { useUploads } from "@/context/uploads";
+import { useConnectedAccounts } from "@/hooks/use-connected-accounts";
 import { motion, AnimatePresence } from "framer-motion";
-import { UploadCloud, File as FileIcon } from "lucide-react";
+import { UploadCloud, File as FileIcon, ChevronDown, Check, HardDrive } from "lucide-react";
 import { cn } from "@/lib/utils";
+import * as Select from "@radix-ui/react-select";
 
 type FileStatus = "idle" | "dragging" | "uploading" | "error";
 
@@ -32,7 +34,6 @@ interface FileUploadProps {
 }
 
 const DEFAULT_MAX_FILE_SIZE = 20 * 1024 * 1024 * 1024; // 20GB
-const UPLOAD_STEP_SIZE = 5;
 const FILE_SIZES = [
   "Bytes",
   "KB",
@@ -228,12 +229,12 @@ const UploadingAnimation = ({ progress }: { progress: number }) => (
 );
 
 export default function FileUpload({
-  onUploadSuccess = () => {},
-  onUploadError = () => {},
+  onUploadSuccess = () => { },
+  onUploadError = () => { },
   acceptedFileTypes = [],
   maxFileSize = DEFAULT_MAX_FILE_SIZE,
   currentFile: initialFile = null,
-  onFileRemove = () => {},
+  onFileRemove = () => { },
   uploadDelay = 2000,
   validateFile = () => null,
   className,
@@ -247,9 +248,32 @@ export default function FileUpload({
     useUploads();
   const uploadIdRef = useRef<string | null>(null);
 
+  const { data: accountsRaw = [] } = useConnectedAccounts();
+  // Filter out any accounts that might still have issue with ID or incomplete data
+  const accounts = accountsRaw.filter(a => a.id && a.email);
+
+  const [selectedAccount, setSelectedAccount] = useState<string>("auto");
+
+  // Load preferred account from localStorage on mount
   useEffect(() => {
-    return () => {};
-  }, []);
+    const saved = localStorage.getItem("dm_selected_account");
+    if (saved) {
+      // Verify if saved account still exists (if specific ID)
+      if (saved === "auto") {
+        setSelectedAccount("auto");
+      } else {
+        const exists = accounts.find(a => String(a.id) === saved);
+        if (exists) {
+          setSelectedAccount(saved);
+        }
+      }
+    }
+  }, [accounts]);
+
+  const handleAccountChange = (val: string) => {
+    setSelectedAccount(val);
+    localStorage.setItem("dm_selected_account", val);
+  };
 
   const validateFileSize = useCallback(
     (file: File): FileError | null => {
@@ -298,30 +322,19 @@ export default function FileUpload({
 
   const simulateUpload = useCallback(
     (uploadingFile: File) => {
-      if (
-        typeof window !== "undefined" &&
-        typeof console?.debug === "function"
-      ) {
-        console.debug(
-          "FileUpload:simulate start",
-          uploadingFile.name,
-          uploadingFile.size
-        );
-      }
       const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "";
       const url = API_BASE
         ? `${API_BASE.replace(/\/$/, "")}/drive/upload/files`
         : "/drive/upload/files";
 
       const form = new FormData();
-      form.append("files", uploadingFile, uploadingFile.name);
 
-      try {
-        const preferred = localStorage.getItem("dm_selected_account");
-        if (preferred) form.append("driveAccountId", preferred);
-      } catch (err) {
-        console.debug("file-upload: couldn't read preferred account", err);
+      // IMPORTANT: Append non-file fields FIRST for Multer
+      if (selectedAccount && selectedAccount !== "auto") {
+        form.append("driveAccountId", selectedAccount);
       }
+
+      form.append("files", uploadingFile, uploadingFile.name);
 
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url, true);
@@ -337,12 +350,6 @@ export default function FileUpload({
         const p = Math.min(100, Math.round((e.loaded / e.total) * 100));
         setProgress(p);
         updateProgress(uploadIdRef.current as string, p);
-        if (
-          typeof window !== "undefined" &&
-          typeof console?.debug === "function"
-        ) {
-          console.debug("FileUpload:progress", uploadIdRef.current, p);
-        }
       };
 
       xhr.onload = () => {
@@ -391,12 +398,6 @@ export default function FileUpload({
             if (uploadIdRef.current) removeUpload(uploadIdRef.current);
             uploadIdRef.current = null;
           }, 2000);
-          if (
-            typeof window !== "undefined" &&
-            typeof console?.debug === "function"
-          ) {
-            console.debug("FileUpload:done", uploadingFile.name);
-          }
         } else {
           const err = {
             message: `Upload failed with status ${xhr.status}`,
@@ -418,12 +419,6 @@ export default function FileUpload({
         onUploadError?.(err);
         setStatus("error");
         setError(err);
-        if (
-          typeof window !== "undefined" &&
-          typeof console?.debug === "function"
-        ) {
-          console.debug("FileUpload:error", err);
-        }
       };
 
       xhr.send(form);
@@ -435,6 +430,7 @@ export default function FileUpload({
       markDone,
       markError,
       removeUpload,
+      selectedAccount
     ]
   );
 
@@ -566,6 +562,131 @@ export default function FileUpload({
       role="complementary"
       aria-label="File upload"
     >
+      {/* Account Selector */}
+      {accounts.length > 0 && status === "idle" && (
+        <div className="mb-4">
+          <Select.Root value={selectedAccount} onValueChange={handleAccountChange}>
+            <Select.Trigger
+              className="
+                      w-full flex items-center justify-between 
+                      bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm
+                      border border-gray-200 dark:border-white/10
+                      px-4 py-2.5 text-sm rounded-xl shadow-sm 
+                      hover:bg-white/70 dark:hover:bg-zinc-900/70
+                      focus:outline-none focus:ring-2 focus:ring-blue-500/20
+                      transition-all duration-200
+                    "
+              aria-label="Select Upload Account"
+            >
+              <div className="flex items-center gap-2 truncate">
+                {selectedAccount === "auto" ? (
+                  <>
+                    <div className="p-1 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                      <UploadCloud className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="font-medium text-gray-700 dark:text-gray-200">Auto (Best fit)</span>
+                  </>
+                ) : (
+                  (() => {
+                    const acc = accounts.find(a => String(a.id) === selectedAccount);
+                    return acc ? (
+                      <>
+                        <div className="p-1 rounded-md bg-green-500/10 text-green-600 dark:text-green-400">
+                          <HardDrive className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="font-medium text-gray-700 dark:text-gray-200 truncate">{acc.email}</span>
+                      </>
+                    ) : <span>Select account...</span>
+                  })()
+                )}
+              </div>
+              <Select.Icon>
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Select.Icon>
+            </Select.Trigger>
+            <Select.Portal>
+              <Select.Content
+                className="
+                        overflow-hidden 
+                        bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md 
+                        rounded-xl shadow-2xl border border-gray-100 dark:border-white/10
+                        z-50 min-w-[var(--radix-select-trigger-width)]
+                        animate-in fade-in-0 zoom-in-95 duration-200
+                      "
+                position="popper"
+                sideOffset={5}
+              >
+                <Select.Viewport className="p-1">
+                  <Select.Item
+                    value="auto"
+                    className="
+                                  relative flex items-center gap-2 px-3 py-2.5 
+                                  text-sm rounded-lg cursor-pointer outline-none select-none
+                                  text-gray-700 dark:text-gray-200
+                                  data-[highlighted]:bg-blue-50 dark:data-[highlighted]:bg-blue-900/20
+                                  data-[highlighted]:text-blue-700 dark:data-[highlighted]:text-blue-200
+                                  transition-colors
+                                "
+                  >
+                    <div className="p-1.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+                      <UploadCloud className="h-4 w-4" />
+                    </div>
+                    <Select.ItemText>
+                      <div className="flex flex-col">
+                        <span className="font-medium">Auto (Best fit)</span>
+                        <span className="text-xs text-muted-foreground">Automatically select account with most space</span>
+                      </div>
+                    </Select.ItemText>
+                    <Select.ItemIndicator className="absolute right-2 inline-flex items-center justify-center text-blue-600">
+                      <Check className="h-4 w-4" />
+                    </Select.ItemIndicator>
+                  </Select.Item>
+
+                  <div className="h-px bg-gray-100 dark:bg-white/10 my-1 mx-2" />
+
+                  <Select.Group>
+                    <Select.Label className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Connected Accounts
+                    </Select.Label>
+
+                    {accounts.map(account => (
+                      <Select.Item
+                        key={account.id}
+                        value={String(account.id)}
+                        className="
+                                      relative flex items-center gap-2 px-3 py-2.5 
+                                      text-sm rounded-lg cursor-pointer outline-none select-none
+                                      text-gray-700 dark:text-gray-200
+                                      data-[highlighted]:bg-gray-100 dark:data-[highlighted]:bg-white/5
+                                      transition-colors
+                                    "
+                      >
+                        <div className="p-1.5 rounded-md bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">
+                          <HardDrive className="h-4 w-4" />
+                        </div>
+                        <Select.ItemText>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-medium truncate max-w-[180px]">{account.email}</span>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>{formatBytes((account.total_space || 0) - (account.used_space || 0))} free</span>
+                              <span className="text-gray-300 dark:text-gray-600">•</span>
+                              <span>{formatBytes(account.total_space || 0)} total</span>
+                            </div>
+                          </div>
+                        </Select.ItemText>
+                        <Select.ItemIndicator className="absolute right-2 inline-flex items-center justify-center text-green-600">
+                          <Check className="h-4 w-4" />
+                        </Select.ItemIndicator>
+                      </Select.Item>
+                    ))}
+                  </Select.Group>
+                </Select.Viewport>
+              </Select.Content>
+            </Select.Portal>
+          </Select.Root>
+        </div>
+      )}
+
       <div className="group relative w-full rounded-xl bg-white dark:bg-black ring-1 ring-gray-200 dark:ring-white/10 p-0.5">
         <div className="absolute inset-x-0 -top-px h-px w-full bg-gradient-to-r from-transparent via-blue-500/20 to-transparent" />
 
@@ -623,9 +744,9 @@ export default function FileUpload({
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         {acceptedFileTypes?.length
                           ? `${acceptedFileTypes
-                              .map((t) => t.split("/")[1])
-                              .join(", ")
-                              .toUpperCase()}`
+                            .map((t) => t.split("/")[1])
+                            .join(", ")
+                            .toUpperCase()}`
                           : "Any file type"}{" "}
                         {maxFileSize && `up to ${formatBytes(maxFileSize)}`}
                       </p>
