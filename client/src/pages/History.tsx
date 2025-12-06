@@ -103,12 +103,7 @@ export default function History() {
 
 
         uploads.forEach(upload => {
-            if (historyMap.has(upload.id)) {
-
-
-
-
-            } else {
+            if (!historyMap.has(upload.id)) {
                 items.unshift({
                     uploadId: upload.id,
                     fileName: upload.name,
@@ -169,17 +164,12 @@ export default function History() {
                             ) : (
                                 mergedItems.map((item) => {
                                     const activeUpload = uploads.find(u => u.id === item.uploadId);
-                                    // Only consider it uploading if server says so, OR if server doesn't know about it yet (client only)
-                                    // If server says succeeded/failed, trust the server.
                                     const isServerDone = item.status === 'succeeded' || item.status === 'failed';
                                     const isUploading = !isServerDone && (activeUpload?.status === 'uploading' || item.status === 'in_progress' || item.status === 'pending');
 
-                                    // Calculate progress from both sources
                                     const clientProgress = activeUpload ? activeUpload.progress : 0;
                                     const serverProgress = item.totalBytes ? (item.transferredBytes / item.totalBytes) * 100 : 0;
 
-                                    // Use the maximum to avoid "stuck" state if one source lags
-                                    // But if server is done, force 100%
                                     const progress = isServerDone ? (item.status === 'succeeded' ? 100 : 0) : Math.max(clientProgress, serverProgress);
 
                                     const etr = activeUpload && isUploading ? calculateETR(activeUpload.startedAt, activeUpload.progress) : null;

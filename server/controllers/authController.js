@@ -83,7 +83,6 @@ const updateProfile = async (req, res) => {
       return res.status(400).json({ message: "Nothing to update" });
     }
 
-    // if email provided, ensure it's not used by another user
     if (email) {
       const existing = await prisma.user.findUnique({ where: { email } });
       if (existing && existing.id !== userId) {
@@ -161,7 +160,6 @@ const refreshAccessToken = async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: payload.id } });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // rotate refresh token (stateless) and issue new access token
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 

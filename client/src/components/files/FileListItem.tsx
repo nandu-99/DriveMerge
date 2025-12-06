@@ -33,7 +33,6 @@ function FileCard({ file, onDownload, onPreview }: Omit<Props, "view">) {
 
   return (
     <div className="glass-card p-3 sm:p-4 flex flex-col items-start hover:shadow-elevated transition-all hover:scale-[1.02] active:scale-[0.98]">
-      {/* Preview Area */}
       <div className="w-full h-32 sm:h-40 bg-white/5 rounded-md overflow-hidden flex items-center justify-center mb-3 relative group">
         {isImage && file.thumbnailUrl && !thumbError ? (
           <>
@@ -63,7 +62,6 @@ function FileCard({ file, onDownload, onPreview }: Omit<Props, "view">) {
         )}
       </div>
 
-      {/* File Info */}
       <div className="w-full flex-1 mb-3">
         <div className="font-medium truncate text-sm sm:text-base" title={file.name}>
           {file.name}
@@ -77,7 +75,6 @@ function FileCard({ file, onDownload, onPreview }: Omit<Props, "view">) {
         </div>
       </div>
 
-      {/* Actions */}
       <div className="w-full flex flex-col xs:flex-row items-stretch xs:items-center gap-2">
         <div className="text-xs text-muted-foreground truncate flex-1" title={file.mime ?? "-"}>
           {file.mime ?? "-"}
@@ -121,11 +118,8 @@ export default function FileListItem({
 
   return (
     <div className="glass-card p-3 sm:p-4">
-      {/* Mobile: Stack layout */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 max-w-64 sm:max-w-none">
-        {/* File Info Section */}
         <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
-          {/* Icon */}
           <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-md bg-white/5 flex items-center justify-center flex-shrink-0 overflow-hidden">
             {file.mime?.startsWith("image/") && file.thumbnailUrl ? (
               <img
@@ -137,7 +131,6 @@ export default function FileListItem({
                   el.style.display = "none";
                 }}
                 onLoad={() => {
-                  /* nothing for small icon */
                 }}
               />
             ) : (
@@ -145,7 +138,6 @@ export default function FileListItem({
             )}
           </div>
 
-          {/* File Details */}
           <div className="flex-1 min-w-0">
             <div className="font-medium truncate text-sm sm:text-base" title={file.name}>
               {file.name}
@@ -160,21 +152,17 @@ export default function FileListItem({
                 })}
               </span>
             </div>
-            {/* Mobile: Show MIME type below */}
             <div className="text-xs text-muted-foreground mt-1 sm:hidden truncate">
               {file.mime ?? "-"}
             </div>
           </div>
         </div>
 
-        {/* Actions Section */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Desktop: Show MIME type */}
           <div className="hidden sm:block text-xs text-muted-foreground mr-2 max-w-[120px] truncate" title={file.mime ?? "-"}>
             {file.mime ?? "-"}
           </div>
 
-          {/* Action Buttons */}
           <button
             className="btn-glass text-xs sm:text-sm px-3 py-1.5 sm:px-4 sm:py-2 flex items-center justify-center gap-1.5 flex-1 sm:flex-none"
             onClick={() => onPreview(file.id)}
