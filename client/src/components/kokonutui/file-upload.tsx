@@ -249,16 +249,13 @@ export default function FileUpload({
   const uploadIdRef = useRef<string | null>(null);
 
   const { data: accountsRaw = [] } = useConnectedAccounts();
-  // Filter out any accounts that might still have issue with ID or incomplete data
   const accounts = accountsRaw.filter(a => a.id && a.email);
 
   const [selectedAccount, setSelectedAccount] = useState<string>("auto");
 
-  // Load preferred account from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("dm_selected_account");
     if (saved) {
-      // Verify if saved account still exists (if specific ID)
       if (saved === "auto") {
         setSelectedAccount("auto");
       } else {
@@ -320,108 +317,297 @@ export default function FileUpload({
     [onUploadError]
   );
 
-  const simulateUpload = useCallback(
-    (uploadingFile: File) => {
-      const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "";
-      const url = API_BASE
-        ? `${API_BASE.replace(/\/$/, "")}/drive/upload/files`
-        : "/drive/upload/files";
+  const uploadSingleFile = (uploadingFile: File, uploadId: string) => {
+    const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "";
+    const url = API_BASE
+      ? `${API_BASE.replace(/\/$/, "")}/drive/upload/files`
+      : "/drive/upload/files";
 
-      const form = new FormData();
+    const form = new FormData();
 
-      // IMPORTANT: Append non-file fields FIRST for Multer
-      if (selectedAccount && selectedAccount !== "auto") {
-        form.append("driveAccountId", selectedAccount);
-      }
+    if (selectedAccount && selectedAccount !== "auto") {
+      form.append("driveAccountId", selectedAccount);
+    }
 
-      form.append("files", uploadingFile, uploadingFile.name);
+    form.append("files", uploadingFile, uploadingFile.name);
 
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", url, true);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
 
-      try {
-        const token = localStorage.getItem("dm_token");
-        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-      } catch (e) {
-      }
+    try {
+      const token = localStorage.getItem("dm_token");
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    } catch (e) {
+    }
 
-      xhr.upload.onprogress = (e: ProgressEvent<EventTarget>) => {
-        if (!e.lengthComputable) return;
-        const p = Math.min(100, Math.round((e.loaded / e.total) * 100));
-        setProgress(p);
-        updateProgress(uploadIdRef.current as string, p);
-      };
+    xhr.upload.onprogress = (e: ProgressEvent<EventTarget>) => {
+      if (!e.lengthComputable) return;
+      const p = Math.min(100, Math.round((e.loaded / e.total) * 100));
+      setProgress(p);
+      updateProgress(uploadId, p);
+    };
 
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          let serverResp = null;
-          try {
-            serverResp = JSON.parse(xhr.responseText || '{}');
-          } catch (e) {
-            serverResp = null;
-          }
-
-          setProgress(100);
-          setStatus("idle");
-          if (uploadIdRef.current) markDone(uploadIdRef.current);
-          onUploadSuccess?.(uploadingFile);
-
-          try {
-            const firstId = serverResp?.[0]?.id || serverResp?.id || (serverResp?.tasks && serverResp.tasks[0]?.id);
-            const token = localStorage.getItem("dm_token");
-            if (firstId && typeof window !== 'undefined') {
-              const esUrl = token
-                ? `/drive/upload/progress/${encodeURIComponent(firstId)}?access_token=${encodeURIComponent(token)}`
-                : `/drive/upload/progress/${encodeURIComponent(firstId)}`;
-              const es = new EventSource(esUrl);
-              es.onmessage = (ev) => {
-                try {
-                  const d = JSON.parse(ev.data || '{}');
-                  if (typeof d.progress === 'number') {
-                    setProgress(d.progress);
-                    updateProgress(firstId, d.progress);
-                  }
-                } catch (err) {
-                  console.debug('sse:parse', err);
-                }
-              };
-              es.onerror = (err) => {
-                console.debug('sse:error', err);
-                es.close();
-              };
-            }
-          } catch (err) {
-            console.debug('subscribe sse failed', err);
-          }
-
-          setTimeout(() => {
-            if (uploadIdRef.current) removeUpload(uploadIdRef.current);
-            uploadIdRef.current = null;
-          }, 2000);
-        } else {
-          const err = {
-            message: `Upload failed with status ${xhr.status}`,
-            code: "UPLOAD_FAILED",
-          };
-          if (uploadIdRef.current) markError(uploadIdRef.current);
-          onUploadError?.(err);
-          setStatus("error");
-          setError(err);
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        let serverResp = null;
+        try {
+          serverResp = JSON.parse(xhr.responseText || '{}');
+        } catch (e) {
+          serverResp = null;
         }
-      };
 
-      xhr.onerror = () => {
+        setProgress(100);
+        setStatus("idle");
+        markDone(uploadId);
+        onUploadSuccess?.(uploadingFile);
+
+        try {
+          const firstId = serverResp?.[0]?.id || serverResp?.id || (serverResp?.tasks && serverResp.tasks[0]?.id);
+          const token = localStorage.getItem("dm_token");
+          if (firstId && typeof window !== 'undefined') {
+            const esUrl = token
+              ? `/drive/upload/progress/${encodeURIComponent(firstId)}?access_token=${encodeURIComponent(token)}`
+              : `/drive/upload/progress/${encodeURIComponent(firstId)}`;
+            const es = new EventSource(esUrl);
+            es.onmessage = (ev) => {
+              try {
+                const d = JSON.parse(ev.data || '{}');
+                if (typeof d.progress === 'number') {
+                  setProgress(d.progress);
+                  updateProgress(firstId, d.progress);
+                }
+              } catch (err) {
+                console.debug('sse:parse', err);
+              }
+            };
+            es.onerror = (err) => {
+              console.debug('sse:error', err);
+              es.close();
+            };
+          }
+        } catch (err) {
+          console.debug('subscribe sse failed', err);
+        }
+
+        setTimeout(() => {
+          removeUpload(uploadId);
+          uploadIdRef.current = null;
+        }, 2000);
+      } else {
         const err = {
-          message: `Network error during upload`,
-          code: "UPLOAD_NETWORK",
+          message: `Upload failed with status ${xhr.status}`,
+          code: "UPLOAD_FAILED",
         };
-        if (uploadIdRef.current) markError(uploadIdRef.current);
+        markError(uploadId);
         onUploadError?.(err);
         setStatus("error");
         setError(err);
+      }
+    };
+
+    xhr.onerror = () => {
+      const err = {
+        message: `Network error during upload`,
+        code: "UPLOAD_NETWORK",
+      };
+      markError(uploadId);
+      onUploadError?.(err);
+      setStatus("error");
+      setError(err);
+    };
+
+    xhr.send(form);
+  };
+
+  const arrayBufferToHex = (buffer: ArrayBuffer | ArrayBufferView) => {
+    return Array.from(new Uint8Array(buffer as any))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  };
+
+  const uploadChunkedFile = async (uploadingFile: File, uploadId: string) => {
+    const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
+    const MAX_CONCURRENCY = 3;
+    const MAX_RETRIES = 3;
+
+    const totalChunks = Math.ceil(uploadingFile.size / CHUNK_SIZE);
+
+    let encryptionKeyHex: string | null = null;
+    let ivHex: string | null = null;
+    let key: CryptoKey | null = null;
+
+    try {
+      key = await window.crypto.subtle.generateKey(
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+      );
+      const keyData = await window.crypto.subtle.exportKey("raw", key);
+      encryptionKeyHex = arrayBufferToHex(keyData);
+
+      const iv = window.crypto.getRandomValues(new Uint8Array(12));
+      ivHex = arrayBufferToHex(iv);
+    } catch (e) {
+      console.error("Encryption setup failed", e);
+      const err = { message: "Encryption init failed", code: "ENCRYPT_INIT" };
+      markError(uploadId);
+      setError(err);
+      setStatus("error");
+      onUploadError?.(err);
+      return;
+    }
+
+    const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "";
+    const cleanBase = API_BASE.replace(/\/$/, "");
+
+    try {
+      const token = localStorage.getItem("dm_token");
+      const headers = token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+
+      const initRes = await fetch(`${cleanBase}/drive/upload/init`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          name: uploadingFile.name,
+          size: uploadingFile.size,
+          mime: uploadingFile.type,
+          encryptionKey: encryptionKeyHex,
+          iv: ivHex
+        })
+      });
+
+      if (!initRes.ok) throw new Error("Failed to init upload");
+      const { uploadId: driveUploadId } = await initRes.json();
+
+      const chunksProgress = new Array(totalChunks).fill(0);
+
+      const updateAggregateProgress = () => {
+        const totalUploaded = chunksProgress.reduce((a, b) => a + b, 0);
+        const percent = Math.min(100, Math.round((totalUploaded / uploadingFile.size) * 100));
+        setProgress(percent);
+        updateProgress(uploadId, percent);
       };
 
-      xhr.send(form);
+      const uploadChunk = async (i: number) => {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, uploadingFile.size);
+        const chunkBlob = uploadingFile.slice(start, end);
+        const chunkBuffer = await chunkBlob.arrayBuffer();
+
+        const chunkIv = window.crypto.getRandomValues(new Uint8Array(12));
+        const chunkIvHex = arrayBufferToHex(chunkIv);
+
+        const encryptedBuffer = await window.crypto.subtle.encrypt(
+          { name: "AES-GCM", iv: chunkIv },
+          key!,
+          chunkBuffer
+        );
+
+        const encryptedBlob = new Blob([encryptedBuffer]);
+
+        const chunkForm = new FormData();
+        chunkForm.append("chunk", encryptedBlob, "chunk");
+        chunkForm.append("uploadId", driveUploadId);
+        chunkForm.append("chunkIndex", String(i));
+        chunkForm.append("totalChunks", String(totalChunks));
+        chunkForm.append("iv", chunkIvHex);
+
+        let attempt = 0;
+        while (attempt < MAX_RETRIES) {
+          try {
+            await new Promise((resolve, reject) => {
+              const xhr = new XMLHttpRequest();
+              xhr.open("POST", `${cleanBase}/drive/upload/chunk`, true);
+              if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+              xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                  chunksProgress[i] = e.loaded;
+                  updateAggregateProgress();
+                }
+              };
+
+              xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) resolve(null);
+                else reject(new Error(`Chunk ${i} failed status ${xhr.status}`));
+              };
+              xhr.onerror = () => reject(new Error("Network error"));
+              xhr.send(chunkForm);
+            });
+            return;
+          } catch (e: any) {
+            console.warn(`Chunk ${i} attempt ${attempt + 1} failed: ${e.message}`);
+            attempt++;
+            if (attempt >= MAX_RETRIES) throw e;
+            await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+          }
+        }
+      };
+
+      const pool = [];
+      const runTask = (idx: number) => {
+        const p: Promise<void> = uploadChunk(idx).then(() => {
+          pool.splice(pool.indexOf(p), 1);
+        });
+        pool.push(p);
+        return p;
+      };
+
+      for (let i = 0; i < totalChunks; i++) {
+        if (pool.length >= MAX_CONCURRENCY) {
+          await Promise.race(pool);
+        }
+        runTask(i);
+      }
+      await Promise.all(pool);
+
+      await fetch(`${cleanBase}/drive/upload/finalize`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ uploadId: driveUploadId })
+      });
+
+      setProgress(100);
+      setStatus("idle");
+      markDone(uploadId);
+      onUploadSuccess?.(uploadingFile);
+
+      setTimeout(() => {
+        removeUpload(uploadId);
+        uploadIdRef.current = null;
+      }, 2000);
+
+    } catch (err: any) {
+      console.error("Chunk upload fatal error", err);
+      const errorObj = {
+        message: err.message || "Upload failed",
+        code: "UPLOAD_FAILED"
+      };
+      markError(uploadId);
+      setError(errorObj);
+      setStatus("error");
+      onUploadError?.(errorObj);
+    }
+  };
+
+  const simulateUpload = useCallback(
+    (uploadingFile: File) => {
+      const currentUploadId = uploadIdRef.current;
+      if (!currentUploadId) return;
+
+      const validAccounts = accounts.filter(a => a.id && a.email);
+
+      let maxSingleCapacity = 0;
+      validAccounts.forEach(acc => {
+        const free = (acc.total_space || 0) - (acc.used_space || 0);
+        if (free > maxSingleCapacity) maxSingleCapacity = free;
+      });
+
+      if (uploadingFile.size <= maxSingleCapacity) {
+        uploadSingleFile(uploadingFile, currentUploadId);
+      } else {
+        uploadChunkedFile(uploadingFile, currentUploadId);
+      }
     },
     [
       onUploadSuccess,
@@ -430,7 +616,8 @@ export default function FileUpload({
       markDone,
       markError,
       removeUpload,
-      selectedAccount
+      selectedAccount,
+      accounts
     ]
   );
 
@@ -468,9 +655,9 @@ export default function FileUpload({
           size: selectedFile.size,
         });
         uploadIdRef.current = id;
+        setTimeout(() => simulateUpload(selectedFile), 0);
       } catch (e) {
       }
-      simulateUpload(selectedFile);
     },
     [
       simulateUpload,
@@ -526,7 +713,6 @@ export default function FileUpload({
       setStatus("idle");
       const files = e.dataTransfer.files;
       if (files && files.length > 0) {
-        // iterate and handle each file
         Array.from(files).forEach((f) => handleFileSelect(f));
       }
     },

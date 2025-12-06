@@ -102,7 +102,6 @@ export default function FileBrowser() {
       } else if (sortBy === 'size') {
         cmp = (a.sizeBytes || 0) - (b.sizeBytes || 0);
       } else if (sortBy === 'date') {
-        // Handle potentially invalid dates gracefully, defaulting to 0
         const dateA = new Date(a.uploadedAt).getTime() || 0;
         const dateB = new Date(b.uploadedAt).getTime() || 0;
         cmp = dateA - dateB;
@@ -112,20 +111,14 @@ export default function FileBrowser() {
   }, [files, q, sortBy, sortOrder]);
 
   async function handleDownload(id: string) {
-    console.log("Download clicked for file:", id);
     try {
       const token =
         typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
-      console.log("Token available:", !!token);
       const url = `${API_BASE}/drive/files/download?id=${encodeURIComponent(id)}`;
-      console.log("Downloading from:", url);
       const res = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
-      console.log("Download response:", res.status, res.statusText);
       if (!res.ok) {
-        const errorText = await res.text();
-        console.error("Download failed:", errorText);
         alert(`Failed to download file: ${res.statusText}`);
         return;
       }
@@ -136,42 +129,33 @@ export default function FileBrowser() {
       const cd = res.headers.get("content-disposition") || "";
       const m = cd.match(/filename\*=UTF-8''(.+)|filename="?([^;\n"]+)"?/);
       a.download = m ? decodeURIComponent(m[1] || m[2]) : `file-${id}`;
-      console.log("Download filename:", a.download);
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(blobUrl);
     } catch (err) {
-      console.error("Download error:", err);
       alert("Failed to download file. Please try again.");
     }
   }
 
   async function handlePreview(id: string) {
-    console.log("Preview clicked for file:", id);
     const f = (files as FileEntry[]).find((x) => x.id === id) as
       | FileEntry
       | undefined;
     if (!f) {
-      console.error("File not found:", id);
       return;
     }
-    console.log("File to preview:", f);
     try {
       const token =
         typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
       if (!token) {
-        console.warn("No token found, showing preview without token");
         setPreview(f);
         return;
       }
 
-      console.log("Requesting preview token...");
       const responseData = await apiPost("/drive/files/preview-token", { fileId: id }) as { previewToken: string };
-      console.log("Preview token data:", responseData);
       const previewToken = responseData.previewToken;
       if (!previewToken) {
-        console.warn("No preview token in response");
         setPreview(f);
         return;
       }
@@ -179,10 +163,8 @@ export default function FileBrowser() {
       const url = `${API_BASE}/drive/files/download?id=${encodeURIComponent(
         id
       )}&preview=1&preview_token=${encodeURIComponent(previewToken)}`;
-      console.log("Preview URL:", url);
       setPreview({ ...f, thumbnailUrl: url });
     } catch (err) {
-      console.error("Preview error:", err);
       setPreview(f);
     }
   }

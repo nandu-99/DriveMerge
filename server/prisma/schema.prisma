@@ -37,6 +37,7 @@ model DriveAccount {
 
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   files         File[]
+  fileChunks    FileChunk[]  // Opposite relation field
 
   @@unique([userId, email])
 }
@@ -50,10 +51,33 @@ model File {
   mime         String?
   sizeBytes    BigInt
   fileHash     String?  @db.VarChar(128)
+  
+  // File splitting & Encryption support
+  isSplit        Boolean  @default(false)
+  encryptionKey  String?  @db.Text // Encrypted (or simple) key for client-side decryption
+  iv             String?  @db.VarChar(255) // Helper IV if needed at file level
+
   createdAt    DateTime @default(now())
 
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   driveAccount DriveAccount? @relation(fields: [driveAccountId], references: [id], onDelete: Cascade)
+  chunks       FileChunk[]
+}
+
+model FileChunk {
+  id             Int      @id @default(autoincrement())
+  fileId         Int
+  driveAccountId Int
+  driveFileId    String
+  chunkIndex     Int
+  sizeBytes      BigInt
+  iv             String?  @db.VarChar(255) // IV for this specific chunk
+  createdAt      DateTime @default(now())
+
+  file           File         @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  driveAccount   DriveAccount @relation(fields: [driveAccountId], references: [id], onDelete: Cascade)
+
+  @@index([fileId, chunkIndex])
 }
 
 model TransferJob {

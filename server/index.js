@@ -17,11 +17,6 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
 
 
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`, req.query);
-  next();
-});
-
 app.get("/", (req, res) => {
   res.send("DriveMerge server is running 🚀");
 });

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState, useRef, useEffect, memo } from "react";
 import { Download, Eye, File, Image, Video, FileText, Music, FileArchive } from "lucide-react";
 
 interface Props {
@@ -173,7 +173,7 @@ export default function FileListItem({
           <button
             onClick={() => onPreview(file.id)}
             className="p-2 rounded-md hover:bg-background hover:text-foreground text-muted-foreground transition-colors border border-transparent hover:border-border hover:shadow-sm"
-            aria-label={`Preview ${file.name}`}
+            aria-label={`Preview ${file.name} `}
             title="Preview"
           >
             <Eye className="h-4 w-4" />
@@ -181,7 +181,7 @@ export default function FileListItem({
           <button
             onClick={() => onDownload(file.id)}
             className="p-2 rounded-md hover:bg-background hover:text-foreground text-muted-foreground transition-colors border border-transparent hover:border-border hover:shadow-sm"
-            aria-label={`Download ${file.name}`}
+            aria-label={`Download ${file.name} `}
             title="Download"
           >
             <Download className="h-4 w-4" />
