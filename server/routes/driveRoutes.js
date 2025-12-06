@@ -6,6 +6,9 @@ const {
   disconnectAccount,
   getAccounts,
   uploadFiles,
+  initMultipartUpload,
+  uploadChunk,
+  finalizeMultipartUpload,
 } = require("../controllers/driveController");
 const { createPreviewToken } = require("../controllers/driveController");
 const { listFiles, downloadFile, getFiles, debugRecentUploads, getThumbnail, subscribeUploadProgress } = require("../controllers/driveController");
@@ -14,6 +17,9 @@ router.get("/auth-url", authMiddleware, getAuthUrl);
 router.get("/accounts", authMiddleware, getAccounts);
 router.post("/disconnect", authMiddleware, disconnectAccount);
 router.post("/upload/files", authMiddleware, uploadFiles);
+router.post("/upload/init", authMiddleware, initMultipartUpload);
+router.post("/upload/chunk", authMiddleware, uploadChunk);
+router.post("/upload/finalize", authMiddleware, finalizeMultipartUpload);
 router.get("/files/list", authMiddleware, listFiles);
 router.get("/files", authMiddleware, getFiles);
 router.get("/files/download", optionalAuthMiddleware, downloadFile);

@@ -21,7 +21,6 @@ export function useConnectedAccounts() {
         return data.map((a: Record<string, unknown>) => ({
           id: String(a.id ?? ""),
           email: String(a.email ?? ""),
-          // Backend returns GB, we convert to bytes for the UI formatter
           used_space: Number(a.usedSpace ?? 0) * 1024 * 1024 * 1024,
           total_space: Number(a.totalSpace ?? 0) * 1024 * 1024 * 1024,
           provider: "google",

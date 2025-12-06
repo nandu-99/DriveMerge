@@ -285,6 +285,169 @@ const uploadFiles = [
   },
 ];
 
+const initMultipartUpload = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { name, size, mime, encryptionKey, iv } = req.body;
+
+    if (!name || !size) {
+      return res.status(400).json({ message: "Missing name or size" });
+    }
+
+    const driveFileId = uuidv4();
+
+    const file = await prisma.file.create({
+      data: {
+        driveFileId,
+        userId,
+        name,
+        mime: mime || "application/octet-stream",
+        sizeBytes: BigInt(size),
+        isSplit: true,
+        encryptionKey,
+        iv,
+        driveAccountId: null,
+      },
+    });
+
+    res.json({ uploadId: driveFileId, fileId: file.id });
+  } catch (err) {
+    console.error("initMultipartUpload error:", err);
+    res.status(500).json({ message: "Failed to initialize upload" });
+  }
+};
+
+const uploadChunk = [
+  upload.single("chunk"),
+  async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { uploadId, chunkIndex, totalChunks, iv } = req.body;
+      const file = req.file;
+
+      if (!file || !uploadId || chunkIndex === undefined) {
+        return res.status(400).json({ message: "Missing file, uploadId, or chunkIndex" });
+      }
+
+      const fileRecord = await prisma.file.findUnique({
+        where: { driveFileId: uploadId },
+      });
+
+      if (!fileRecord || fileRecord.userId !== userId) {
+        return res.status(404).json({ message: "Upload session not found" });
+      }
+
+      const accounts = await prisma.driveAccount.findMany({
+        where: { userId },
+      });
+
+      const chunkSizeGb = file.size / 1024 ** 3;
+
+      const suitableAccount = accounts
+        .filter((a) => a.usedSpaceGb + chunkSizeGb <= a.totalSpaceGb)
+        .sort((a, b) => {
+          const freeA = a.totalSpaceGb - a.usedSpaceGb;
+          const freeB = b.totalSpaceGb - b.usedSpaceGb;
+          return freeB - freeA;
+        })[0];
+
+      if (!suitableAccount) {
+        return res.status(507).json({ message: "No account has enough space for this chunk" });
+      }
+
+      const auth = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET
+      );
+      auth.setCredentials({ refresh_token: suitableAccount.refreshToken });
+
+      const accessResp = await auth.getAccessToken();
+      auth.setCredentials({ access_token: accessResp.token });
+
+      const drive = google.drive({ version: "v3", auth });
+
+      const chunkName = `${fileRecord.name}.part${chunkIndex}`;
+
+      const media = {
+        mimeType: "application/octet-stream",
+        body: fs.createReadStream(file.path),
+      };
+
+      const driveFile = await drive.files.create({
+        requestBody: {
+          name: chunkName,
+          appProperties: {
+            uploaderId: String(userId),
+            uploaderApp: "DriveMerge",
+            parentFileId: uploadId,
+            chunkIndex: String(chunkIndex)
+          },
+        },
+        media,
+        fields: "id, size",
+      });
+
+      await prisma.fileChunk.create({
+        data: {
+          fileId: fileRecord.id,
+          driveAccountId: suitableAccount.id,
+          driveFileId: driveFile.data.id,
+          chunkIndex: Number(chunkIndex),
+          sizeBytes: BigInt(file.size),
+          iv: iv || null,
+        },
+      });
+
+      await prisma.driveAccount.update({
+        where: { id: suitableAccount.id },
+        data: { usedSpaceGb: { increment: chunkSizeGb } },
+      });
+
+      try { fs.unlinkSync(file.path); } catch (e) { }
+
+      res.json({ message: "Chunk uploaded", chunkId: driveFile.data.id });
+
+    } catch (err) {
+      console.error("uploadChunk error:", err);
+      if (req.file && req.file.path) try { fs.unlinkSync(req.file.path); } catch (e) { }
+      res.status(500).json({ message: "Chunk upload failed" });
+    }
+  }
+];
+
+const finalizeMultipartUpload = async (req, res) => {
+  try {
+    const { uploadId } = req.body;
+    const userId = req.user.id;
+
+    const file = await prisma.file.findUnique({
+      where: { driveFileId: uploadId },
+      include: { fileChunks: true }
+    });
+
+    if (!file || file.userId !== userId) {
+      return res.status(404).json({ message: "Upload session not found" });
+    }
+
+    if (file.isSplit) {
+      const totalUploadedBytes = file.fileChunks.reduce((sum, chunk) => sum + chunk.sizeBytes, 0n);
+      if (totalUploadedBytes !== file.sizeBytes) {
+        return res.status(400).json({
+          message: "Upload incomplete",
+          expected: String(file.sizeBytes),
+          received: String(totalUploadedBytes)
+        });
+      }
+    }
+
+    res.json({ message: "Upload finalized", fileId: file.id });
+
+  } catch (err) {
+    console.error("finalizeMultipartUpload error:", err);
+    res.status(500).json({ message: "Finalization failed" });
+  }
+};
+
 const THUMB_DIR = path.join(process.cwd(), "tmp", "thumbnails");
 
 
@@ -499,9 +662,6 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
 
     try {
       const driveFileId = response.data && response.data.id;
-      console.log(
-        `Uploaded to Drive: id=${driveFileId} name=${file.originalname} account=${account.email} user=${userId}`
-      );
       recentUploads.push({
         id: driveFileId,
         name: file.originalname,
@@ -717,6 +877,93 @@ const downloadFile = async (req, res) => {
       }
     }
 
+    if (fileRec.isSplit) {
+      const chunks = await prisma.fileChunk.findMany({
+        where: { fileId: fileRec.id },
+        include: { driveAccount: true },
+        orderBy: { chunkIndex: "asc" },
+      });
+
+      if (!chunks || chunks.length === 0) {
+        return res.status(404).json({ message: "No chunks found for split file" });
+      }
+
+      const totalSize = chunks.reduce((acc, c) => acc + Number(c.sizeBytes), 0);
+      const mime = fileRec.mime || "application/octet-stream";
+
+      res.setHeader("Content-Type", mime);
+      res.setHeader("Content-Disposition", `attachment; filename="${fileRec.name}"`);
+      res.setHeader("Content-Length", String(totalSize));
+      for (const chunk of chunks) {
+        const account = chunk.driveAccount;
+        if (!account || !account.refreshToken) {
+          console.error(`Missing account for chunk ${chunk.chunkIndex}`);
+          res.destroy(new Error("File corrupt: missing chunk"));
+          return;
+        }
+
+        try {
+          const auth = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET
+          );
+          auth.setCredentials({ refresh_token: account.refreshToken });
+
+          const accessResp = await auth.getAccessToken();
+          const access_token = accessResp && typeof accessResp === 'object' ? accessResp.token : accessResp;
+          auth.setCredentials({ access_token });
+
+          const drive = google.drive({ version: "v3", auth });
+
+          const streamResp = await drive.files.get(
+            { fileId: chunk.driveFileId, alt: "media" },
+            { responseType: "stream" }
+          );
+
+          const chunkBuffer = await new Promise((resolve, reject) => {
+            const parts = [];
+            streamResp.data.on('data', c => parts.push(c));
+            streamResp.data.on('end', () => resolve(Buffer.concat(parts)));
+            streamResp.data.on('error', reject);
+          });
+
+          if (fileRec.encryptionKey && chunk.iv) {
+            try {
+              const key = Buffer.from(fileRec.encryptionKey, 'hex');
+              const iv = Buffer.from(chunk.iv, 'hex');
+
+              const authTag = chunkBuffer.subarray(chunkBuffer.length - 16);
+              const encryptedContent = chunkBuffer.subarray(0, chunkBuffer.length - 16);
+
+              const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+              decipher.setAuthTag(authTag);
+
+              const decrypted = Buffer.concat([decipher.update(encryptedContent), decipher.final()]);
+
+              if (!res.write(decrypted)) {
+                await new Promise(resolve => res.once('drain', resolve));
+              }
+            } catch (decryptErr) {
+              console.error(`Decryption failed for chunk ${chunk.chunkIndex}:`, decryptErr.message);
+              res.destroy(new Error("Decryption failed"));
+              return;
+            }
+          } else {
+            if (!res.write(chunkBuffer)) {
+              await new Promise(resolve => res.once('drain', resolve));
+            }
+          }
+
+        } catch (err) {
+          console.error(`Failed to process chunk ${chunk.chunkIndex}:`, err.message);
+          res.destroy(new Error("Chunk retrieval failed"));
+          return;
+        }
+      }
+      res.end();
+      return;
+    }
+
     const tryStreamFromAccount = async (acc) => {
       if (!acc || !acc.refreshToken) return false;
       try {
@@ -888,9 +1135,11 @@ module.exports = {
   getFiles,
   downloadFile,
   debugRecentUploads,
+  initMultipartUpload,
+  uploadChunk,
+  finalizeMultipartUpload,
   getThumbnail,
   createPreviewToken,
   subscribeUploadProgress,
   getTransfers,
 };
-
