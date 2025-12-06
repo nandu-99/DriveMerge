@@ -35,6 +35,235 @@ const upload = multer({
 const progressMap = new Map();
 const recentUploads = [];
 
+/**
+ * Calculate optimal chunk distribution across accounts based on available storage
+ * @param {number} fileSize - Total file size in bytes
+ * @param {Array} accounts - Array of account objects with id, email, usedSpaceGb, totalSpaceGb
+ * @returns {Array} Array of chunk plans: { accountId, accountEmail, startByte, endByte, chunkSizeBytes }
+ */
+/**
+ * Calculate optimal chunk distribution across accounts based on available storage
+ * @param {number} fileSize - Total file size in bytes
+ * @param {Array} accounts - Array of account objects with id, email, usedSpaceGb, totalSpaceGb
+ * @param {string|number} primaryAccountId - Optional ID of the account to prioritize filling first
+ * @returns {Array} Array of chunk plans: { accountId, accountEmail, startByte, endByte, chunkSizeBytes }
+ */
+function calculateChunkDistribution(fileSize, accounts, primaryAccountId = null) {
+  const accountsWithFreeSpace = accounts
+    .map(a => ({
+      id: a.id,
+      email: a.email,
+      refreshToken: a.refreshToken,
+      freeBytes: Math.max(0, (a.totalSpaceGb - a.usedSpaceGb) * 1024 ** 3),
+      totalSpaceGb: a.totalSpaceGb,
+      usedSpaceGb: a.usedSpaceGb
+    }))
+    .filter(a => a.freeBytes > 0);
+
+  if (accountsWithFreeSpace.length === 0) {
+    throw new Error('No accounts with available storage');
+  }
+
+  // Sort: Primary account first, then descending by free space (largest first)
+  accountsWithFreeSpace.sort((a, b) => {
+    const isAPrimary = primaryAccountId && String(a.id) === String(primaryAccountId);
+    const isBPrimary = primaryAccountId && String(b.id) === String(primaryAccountId);
+
+    if (isAPrimary && !isBPrimary) return -1;
+    if (!isAPrimary && isBPrimary) return 1;
+    return b.freeBytes - a.freeBytes;
+  });
+
+  const totalFreeSpace = accountsWithFreeSpace.reduce((sum, a) => sum + a.freeBytes, 0);
+
+  if (totalFreeSpace < fileSize) {
+    const shortfall = fileSize - totalFreeSpace;
+    throw new Error(`Insufficient storage. Need ${(shortfall / 1024 / 1024 / 1024).toFixed(2)} GB more space.`);
+  }
+
+  const chunks = [];
+  let remainingBytes = fileSize;
+  let currentPosition = 0;
+
+  for (const account of accountsWithFreeSpace) {
+    if (remainingBytes <= 0) break;
+
+    const chunkSizeBytes = Math.min(remainingBytes, account.freeBytes);
+
+    chunks.push({
+      accountId: account.id,
+      accountEmail: account.email,
+      refreshToken: account.refreshToken,
+      startByte: currentPosition,
+      endByte: currentPosition + chunkSizeBytes,
+      chunkSizeBytes: chunkSizeBytes,
+      chunkIndex: chunks.length
+    });
+
+    currentPosition += chunkSizeBytes;
+    remainingBytes -= chunkSizeBytes;
+  }
+
+  return chunks;
+}
+
+/**
+ * Upload a file with storage-aware chunking - splits based on available storage
+ * @param {string} uploadId - Unique upload identifier
+ * @param {Object} file - Multer file object
+ * @param {Array} accounts - Array of connected drive accounts
+ * @param {number} userId - User ID
+ */
+async function uploadWithStorageAwareChunking(uploadId, file, accounts, userId, primaryAccountId = null) {
+  try {
+    const chunkPlan = calculateChunkDistribution(file.size, accounts, primaryAccountId);
+
+    const driveFileId = uuidv4();
+    const parentFile = await prisma.file.create({
+      data: {
+        driveFileId,
+        userId,
+        name: file.originalname,
+        mime: file.mimetype || 'application/octet-stream',
+        sizeBytes: BigInt(file.size),
+        isSplit: chunkPlan.length > 1,
+        fileHash: file._fileHash || null,
+        driveAccountId: chunkPlan.length === 1 ? chunkPlan[0].accountId : null,
+      },
+    });
+
+    const CONCURRENCY_LIMIT = 3;
+
+    const uploadChunk = async (chunk) => {
+      const auth = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET
+      );
+      auth.setCredentials({ refresh_token: chunk.refreshToken });
+      const accessResp = await auth.getAccessToken();
+      auth.setCredentials({ access_token: accessResp.token });
+      const drive = google.drive({ version: 'v3', auth });
+
+      const chunkStream = fs.createReadStream(file.path, {
+        start: chunk.startByte,
+        end: chunk.endByte - 1,
+      });
+
+      const chunkName = chunkPlan.length > 1
+        ? `${file.originalname}.part${chunk.chunkIndex}`
+        : file.originalname;
+
+      const driveFile = await drive.files.create({
+        requestBody: {
+          name: chunkName,
+          appProperties: {
+            uploaderId: String(userId),
+            uploaderApp: 'DriveMerge',
+            parentFileId: driveFileId,
+            chunkIndex: String(chunk.chunkIndex),
+            totalChunks: String(chunkPlan.length),
+          },
+        },
+        media: {
+          mimeType: 'application/octet-stream',
+          body: chunkStream,
+        },
+        fields: 'id, size',
+      });
+
+      if (chunkPlan.length > 1) {
+        await prisma.fileChunk.create({
+          data: {
+            fileId: parentFile.id,
+            driveAccountId: chunk.accountId,
+            driveFileId: driveFile.data.id,
+            chunkIndex: chunk.chunkIndex,
+            sizeBytes: BigInt(chunk.chunkSizeBytes),
+          },
+        });
+      } else {
+        await prisma.file.update({
+          where: { id: parentFile.id },
+          data: { driveFileId: driveFile.data.id },
+        });
+      }
+
+      const chunkSizeGb = chunk.chunkSizeBytes / 1024 ** 3;
+      await prisma.driveAccount.update({
+        where: { id: chunk.accountId },
+        data: { usedSpaceGb: { increment: chunkSizeGb } },
+      });
+
+      const progressEntry = progressMap.get(uploadId);
+      if (progressEntry?.res) {
+        const overallProgress = Math.round(((chunk.chunkIndex + 1) / chunkPlan.length) * 100);
+        progressEntry.res.write(`data: ${JSON.stringify({ progress: overallProgress })}\n\n`);
+      }
+    };
+
+    const retries = [];
+    for (const chunk of chunkPlan) {
+      while (retries.length >= CONCURRENCY_LIMIT) {
+        const finished = await Promise.race(retries);
+        retries.splice(retries.indexOf(finished), 1);
+      }
+      const p = uploadChunk(chunk).then(() => p);
+      retries.push(p);
+    }
+    await Promise.all(retries);
+
+    await prisma.transferJob.update({
+      where: { uploadId },
+      data: {
+        status: 'succeeded',
+        driveFileId,
+        transferredBytes: BigInt(file.size),
+      },
+    });
+
+    try { fs.unlinkSync(file.path); } catch (e) { }
+
+    const progressEntry = progressMap.get(uploadId);
+    if (progressEntry?.res) {
+      progressEntry.res.write('data: ' + JSON.stringify({ progress: 100 }) + '\n\n');
+      progressEntry.res.end();
+    }
+    progressMap.delete(uploadId);
+
+    recentUploads.push({
+      id: driveFileId,
+      name: file.originalname,
+      size: file.size,
+      chunks: chunkPlan.length,
+      userId,
+      uploadedAt: new Date().toISOString(),
+    });
+    if (recentUploads.length > 200) recentUploads.shift();
+
+  } catch (err) {
+    console.error('Storage-aware upload failed:', err);
+
+    try {
+      await prisma.transferJob.update({
+        where: { uploadId },
+        data: { status: 'failed' },
+      });
+    } catch (e) { }
+
+    if (file?.path) try { fs.unlinkSync(file.path); } catch (e) { }
+
+    const progressEntry = progressMap.get(uploadId);
+    if (progressEntry?.res) {
+      progressEntry.res.write('data: ' + JSON.stringify({ progress: 0, error: err.message }) + '\n\n');
+      progressEntry.res.end();
+    }
+    progressMap.delete(uploadId);
+
+    throw err;
+  }
+}
+
+
 const getAuthUrl = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -183,11 +412,50 @@ const uploadFiles = [
           .json({ message: "No connected Google Drive accounts" });
       }
 
+      // REFRESH STORAGE FROM GOOGLE DRIVE API (get real-time values, not stale DB values)
+      console.log('🔄 Refreshing storage quotas from Google Drive API...');
+      for (const account of accounts) {
+        try {
+          const auth = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET
+          );
+          auth.setCredentials({ refresh_token: account.refreshToken });
+          const accessResp = await auth.getAccessToken();
+          auth.setCredentials({ access_token: accessResp.token });
+
+          const drive = google.drive({ version: 'v3', auth });
+          const about = await drive.about.get({ fields: 'storageQuota' });
+          const { limit, usage } = about.data.storageQuota;
+
+          const totalSpaceGb = Number(limit) / 1024 ** 3;
+          const usedSpaceGb = Number(usage) / 1024 ** 3;
+
+          // Update local account object with fresh values
+          account.totalSpaceGb = totalSpaceGb;
+          account.usedSpaceGb = usedSpaceGb;
+
+          // Update database with fresh values
+          await prisma.driveAccount.update({
+            where: { id: account.id },
+            data: { totalSpaceGb, usedSpaceGb }
+          });
+
+          console.log(`   ${account.email}: ${(totalSpaceGb - usedSpaceGb).toFixed(2)} GB free (refreshed)`);
+        } catch (err) {
+          console.warn(`    Failed to refresh ${account.email}:`, err.message);
+        }
+      }
+
       const tasks = [];
 
       const preferredAccountId = req.body?.driveAccountId || req.query?.driveAccountId;
 
       for (const file of req.files) {
+        console.log('────────────────────────────────────────────────────────────────');
+        console.log(`Processing file: ${file.originalname}`);
+        console.log(`   Size: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+
         let fileHash = null;
         if (file.path) {
           fileHash = await new Promise((resolve, reject) => {
@@ -201,11 +469,13 @@ const uploadFiles = [
 
         const uploadId = uuidv4();
 
+        // Check for duplicates
         if (fileHash) {
           const existing = await prisma.file.findFirst({
             where: { userId, fileHash, sizeBytes: BigInt(file.size) },
           });
           if (existing) {
+            console.log(`   Duplicate detected, skipping upload`);
             await prisma.transferJob.create({
               data: {
                 uploadId,
@@ -218,63 +488,120 @@ const uploadFiles = [
               },
             });
             tasks.push({ id: uploadId, fileName: file.originalname, duplicate: true, existingFileId: existing.driveFileId });
-            continue; // skip actual upload
+            continue;
           }
         }
 
+        const fileSizeGb = file.size / 1024 ** 3;
+
+        // Log storage status for debugging
+        console.log('Storage Analysis:');
+        console.log(`   File size: ${(file.size / 1024 / 1024).toFixed(2)} MB (${fileSizeGb.toFixed(4)} GB)`);
+        console.log('   Account storage status:');
+        accounts.forEach(a => {
+          const freeGb = a.totalSpaceGb - a.usedSpaceGb;
+          const canFit = freeGb >= fileSizeGb;
+          console.log(`   • ${a.email}: ${freeGb.toFixed(2)} GB free (${canFit ? 'CAN fit' : 'CANNOT fit'} file)`);
+        });
+
+        // Find account with enough space for the entire file
         let suitableAccount = null;
         if (preferredAccountId) {
-          suitableAccount = accounts.find(a => String(a.id) === String(preferredAccountId));
-          if (!suitableAccount) return res.status(400).json({ message: 'Preferred account not found or not owned by user' });
-        }
-
-        if (!suitableAccount) {
-          const fileSizeGb = file.size / 1024 ** 3;
-          suitableAccount = accounts
-            .filter((a) => {
-              const hasSpace = a.usedSpaceGb + fileSizeGb <= a.totalSpaceGb;
-              return hasSpace;
-            })
-            .sort(
-              (a, b) =>
-                b.totalSpaceGb - b.usedSpaceGb - (a.totalSpaceGb - a.usedSpaceGb)
-            )
-            .shift();
-
-          if (!suitableAccount) {
-            return res.status(400).json({
-              message: `No account has enough space for ${file.originalname}`,
-            });
+          const preferred = accounts.find(a => String(a.id) === String(preferredAccountId));
+          if (preferred && (preferred.totalSpaceGb - preferred.usedSpaceGb) >= fileSizeGb) {
+            suitableAccount = preferred;
+            console.log(`   → Preferred account selected: ${preferred.email}`);
           }
         }
 
-        tasks.push({ id: uploadId, fileName: file.originalname });
+        if (!suitableAccount && !preferredAccountId) {
+          // Only search for a "better" account if the user didn't explicitly prefer one.
+          // If they preferred one (and it wasn't suitable/full), we WANT to fall through to chunking
+          // so we can fill the preferred one first.
+          suitableAccount = accounts
+            .filter((a) => (a.totalSpaceGb - a.usedSpaceGb) >= fileSizeGb)
+            .sort((a, b) => (b.totalSpaceGb - b.usedSpaceGb) - (a.totalSpaceGb - a.usedSpaceGb))
+            .shift();
+          if (suitableAccount) {
+            console.log(`   → Best-fit single account: ${suitableAccount.email}`);
+          }
+        }
+
+        // Calculate total available space across all accounts
+        const totalFreeSpace = accounts.reduce((sum, a) => sum + (a.totalSpaceGb - a.usedSpaceGb), 0);
+        console.log(`   Total free space across all accounts: ${totalFreeSpace.toFixed(2)} GB`);
+
+        // Force multi-account distribution when multiple accounts exist to maximize storage utilization
+        const shouldForceSplit = false; // Prefer single account if it fits, per user request
+
+        // If preferredAccountId was set but suitableAccount is null (didn't fit), we default to splitting
+        // regardless of whether there's another "best fit" account (because we skipped looking for one).
+
+        const decision = shouldForceSplit ? 'FORCE-SPLIT MULTI-ACCOUNT' : (suitableAccount ? 'SINGLE ACCOUNT UPLOAD' : (totalFreeSpace >= fileSizeGb ? 'STORAGE-AWARE CHUNKING' : 'INSUFFICIENT STORAGE'));
+        console.log(`   Decision: ${decision}`);
+
+        tasks.push({ id: uploadId, fileName: file.originalname, isSplit: shouldForceSplit });
         progressMap.set(uploadId, { progress: 0, res: null });
-
-        await prisma.transferJob.create({
-          data: {
-            uploadId,
-            userId,
-            fileName: file.originalname,
-            status: 'pending',
-            totalBytes: BigInt(file.size),
-            sourceAccountId: null,
-            destAccountId: suitableAccount.id,
-          },
-        });
-
         file._fileHash = fileHash;
 
-        setImmediate(() => {
-          uploadToDrive(uploadId, file, suitableAccount, userId).catch(
-            (err) => {
-              console.error(
-                `Background upload failed for ${uploadId}:`,
-                err.message
-              );
-            }
-          );
-        });
+        if (!shouldForceSplit && suitableAccount) {
+          // Single account upload - only when exactly one account is connected
+          console.log(`   Single account upload: ${suitableAccount.email}`);
+
+          await prisma.transferJob.create({
+            data: {
+              uploadId,
+              userId,
+              fileName: file.originalname,
+              status: 'pending',
+              totalBytes: BigInt(file.size),
+              sourceAccountId: null,
+              destAccountId: suitableAccount.id,
+            },
+          });
+
+          setImmediate(() => {
+            uploadToDrive(uploadId, file, suitableAccount, userId).catch(
+              (err) => {
+                console.error(`Background upload failed for ${uploadId}:`, err.message);
+              }
+            );
+          });
+        } else if (totalFreeSpace >= fileSizeGb) {
+          // Storage-aware chunking - file needs to be split across accounts
+          console.log(`   Storage-aware chunking: file will be split across accounts`);
+          console.log(`   Total free space: ${totalFreeSpace.toFixed(2)} GB`);
+
+          await prisma.transferJob.create({
+            data: {
+              uploadId,
+              userId,
+              fileName: file.originalname,
+              status: 'pending',
+              totalBytes: BigInt(file.size),
+              sourceAccountId: null,
+              destAccountId: null, // Will be split across multiple
+            },
+          });
+
+          setImmediate(() => {
+            // Pass preferredAccountId as the primary target for distribution
+            uploadWithStorageAwareChunking(uploadId, file, accounts, userId, preferredAccountId).catch(
+              (err) => {
+                console.error(`Storage-aware upload failed for ${uploadId}:`, err.message);
+              }
+            );
+          });
+        } else {
+          // Not enough total space across all accounts
+          const shortfall = fileSizeGb - totalFreeSpace;
+          console.log(`   Insufficient storage across all ${accounts.length} account(s)`);
+          console.log(`   Need: ${(fileSizeGb * 1024).toFixed(2)} MB, Have: ${(totalFreeSpace * 1024).toFixed(2)} MB`);
+          console.log(`   Shortfall: ${(shortfall * 1024).toFixed(2)} MB - connect more accounts or free up space`);
+          return res.status(400).json({
+            message: `Not enough storage. File needs ${(fileSizeGb * 1024).toFixed(0)} MB but only ${(totalFreeSpace * 1024).toFixed(0)} MB available across ${accounts.length} account(s). Connect more Google Drive accounts or free up ${(shortfall * 1024).toFixed(0)} MB.`,
+          });
+        }
       }
 
       res.json(tasks);
@@ -285,168 +612,6 @@ const uploadFiles = [
   },
 ];
 
-const initMultipartUpload = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { name, size, mime, encryptionKey, iv } = req.body;
-
-    if (!name || !size) {
-      return res.status(400).json({ message: "Missing name or size" });
-    }
-
-    const driveFileId = uuidv4();
-
-    const file = await prisma.file.create({
-      data: {
-        driveFileId,
-        userId,
-        name,
-        mime: mime || "application/octet-stream",
-        sizeBytes: BigInt(size),
-        isSplit: true,
-        encryptionKey,
-        iv,
-        driveAccountId: null,
-      },
-    });
-
-    res.json({ uploadId: driveFileId, fileId: file.id });
-  } catch (err) {
-    console.error("initMultipartUpload error:", err);
-    res.status(500).json({ message: "Failed to initialize upload" });
-  }
-};
-
-const uploadChunk = [
-  upload.single("chunk"),
-  async (req, res) => {
-    try {
-      const userId = req.user.id;
-      const { uploadId, chunkIndex, totalChunks, iv } = req.body;
-      const file = req.file;
-
-      if (!file || !uploadId || chunkIndex === undefined) {
-        return res.status(400).json({ message: "Missing file, uploadId, or chunkIndex" });
-      }
-
-      const fileRecord = await prisma.file.findUnique({
-        where: { driveFileId: uploadId },
-      });
-
-      if (!fileRecord || fileRecord.userId !== userId) {
-        return res.status(404).json({ message: "Upload session not found" });
-      }
-
-      const accounts = await prisma.driveAccount.findMany({
-        where: { userId },
-      });
-
-      const chunkSizeGb = file.size / 1024 ** 3;
-
-      const suitableAccount = accounts
-        .filter((a) => a.usedSpaceGb + chunkSizeGb <= a.totalSpaceGb)
-        .sort((a, b) => {
-          const freeA = a.totalSpaceGb - a.usedSpaceGb;
-          const freeB = b.totalSpaceGb - b.usedSpaceGb;
-          return freeB - freeA;
-        })[0];
-
-      if (!suitableAccount) {
-        return res.status(507).json({ message: "No account has enough space for this chunk" });
-      }
-
-      const auth = new google.auth.OAuth2(
-        process.env.GOOGLE_CLIENT_ID,
-        process.env.GOOGLE_CLIENT_SECRET
-      );
-      auth.setCredentials({ refresh_token: suitableAccount.refreshToken });
-
-      const accessResp = await auth.getAccessToken();
-      auth.setCredentials({ access_token: accessResp.token });
-
-      const drive = google.drive({ version: "v3", auth });
-
-      const chunkName = `${fileRecord.name}.part${chunkIndex}`;
-
-      const media = {
-        mimeType: "application/octet-stream",
-        body: fs.createReadStream(file.path),
-      };
-
-      const driveFile = await drive.files.create({
-        requestBody: {
-          name: chunkName,
-          appProperties: {
-            uploaderId: String(userId),
-            uploaderApp: "DriveMerge",
-            parentFileId: uploadId,
-            chunkIndex: String(chunkIndex)
-          },
-        },
-        media,
-        fields: "id, size",
-      });
-
-      await prisma.fileChunk.create({
-        data: {
-          fileId: fileRecord.id,
-          driveAccountId: suitableAccount.id,
-          driveFileId: driveFile.data.id,
-          chunkIndex: Number(chunkIndex),
-          sizeBytes: BigInt(file.size),
-          iv: iv || null,
-        },
-      });
-
-      await prisma.driveAccount.update({
-        where: { id: suitableAccount.id },
-        data: { usedSpaceGb: { increment: chunkSizeGb } },
-      });
-
-      try { fs.unlinkSync(file.path); } catch (e) { }
-
-      res.json({ message: "Chunk uploaded", chunkId: driveFile.data.id });
-
-    } catch (err) {
-      console.error("uploadChunk error:", err);
-      if (req.file && req.file.path) try { fs.unlinkSync(req.file.path); } catch (e) { }
-      res.status(500).json({ message: "Chunk upload failed" });
-    }
-  }
-];
-
-const finalizeMultipartUpload = async (req, res) => {
-  try {
-    const { uploadId } = req.body;
-    const userId = req.user.id;
-
-    const file = await prisma.file.findUnique({
-      where: { driveFileId: uploadId },
-      include: { fileChunks: true }
-    });
-
-    if (!file || file.userId !== userId) {
-      return res.status(404).json({ message: "Upload session not found" });
-    }
-
-    if (file.isSplit) {
-      const totalUploadedBytes = file.fileChunks.reduce((sum, chunk) => sum + chunk.sizeBytes, 0n);
-      if (totalUploadedBytes !== file.sizeBytes) {
-        return res.status(400).json({
-          message: "Upload incomplete",
-          expected: String(file.sizeBytes),
-          received: String(totalUploadedBytes)
-        });
-      }
-    }
-
-    res.json({ message: "Upload finalized", fileId: file.id });
-
-  } catch (err) {
-    console.error("finalizeMultipartUpload error:", err);
-    res.status(500).json({ message: "Finalization failed" });
-  }
-};
 
 const THUMB_DIR = path.join(process.cwd(), "tmp", "thumbnails");
 
@@ -894,11 +1059,15 @@ const downloadFile = async (req, res) => {
       res.setHeader("Content-Type", mime);
       res.setHeader("Content-Disposition", `attachment; filename="${fileRec.name}"`);
       res.setHeader("Content-Length", String(totalSize));
-      for (const chunk of chunks) {
+
+      // Sequential streaming loop (Robust & Non-Recursive)
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
         const account = chunk.driveAccount;
+
         if (!account || !account.refreshToken) {
           console.error(`Missing account for chunk ${chunk.chunkIndex}`);
-          res.destroy(new Error("File corrupt: missing chunk"));
+          res.destroy(new Error("File corrupt: missing chunk account"));
           return;
         }
 
@@ -912,7 +1081,6 @@ const downloadFile = async (req, res) => {
           const accessResp = await auth.getAccessToken();
           const access_token = accessResp && typeof accessResp === 'object' ? accessResp.token : accessResp;
           auth.setCredentials({ access_token });
-
           const drive = google.drive({ version: "v3", auth });
 
           const streamResp = await drive.files.get(
@@ -920,46 +1088,23 @@ const downloadFile = async (req, res) => {
             { responseType: "stream" }
           );
 
-          const chunkBuffer = await new Promise((resolve, reject) => {
-            const parts = [];
-            streamResp.data.on('data', c => parts.push(c));
-            streamResp.data.on('end', () => resolve(Buffer.concat(parts)));
-            streamResp.data.on('error', reject);
+          await new Promise((resolve, reject) => {
+            // Pipe with {end: false} so we can manually end after ALL chunks
+            streamResp.data.pipe(res, { end: false });
+            streamResp.data.on('end', resolve);
+            streamResp.data.on('error', (err) => {
+              console.error(`Stream error on chunk ${chunk.chunkIndex}`, err);
+              reject(err);
+            });
           });
 
-          if (fileRec.encryptionKey && chunk.iv) {
-            try {
-              const key = Buffer.from(fileRec.encryptionKey, 'hex');
-              const iv = Buffer.from(chunk.iv, 'hex');
-
-              const authTag = chunkBuffer.subarray(chunkBuffer.length - 16);
-              const encryptedContent = chunkBuffer.subarray(0, chunkBuffer.length - 16);
-
-              const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-              decipher.setAuthTag(authTag);
-
-              const decrypted = Buffer.concat([decipher.update(encryptedContent), decipher.final()]);
-
-              if (!res.write(decrypted)) {
-                await new Promise(resolve => res.once('drain', resolve));
-              }
-            } catch (decryptErr) {
-              console.error(`Decryption failed for chunk ${chunk.chunkIndex}:`, decryptErr.message);
-              res.destroy(new Error("Decryption failed"));
-              return;
-            }
-          } else {
-            if (!res.write(chunkBuffer)) {
-              await new Promise(resolve => res.once('drain', resolve));
-            }
-          }
-
         } catch (err) {
-          console.error(`Failed to process chunk ${chunk.chunkIndex}:`, err.message);
-          res.destroy(new Error("Chunk retrieval failed"));
+          console.error(`Failed to retrieve chunk ${chunk.chunkIndex}`, err);
+          res.destroy(err);
           return;
         }
       }
+
       res.end();
       return;
     }
@@ -1135,9 +1280,6 @@ module.exports = {
   getFiles,
   downloadFile,
   debugRecentUploads,
-  initMultipartUpload,
-  uploadChunk,
-  finalizeMultipartUpload,
   getThumbnail,
   createPreviewToken,
   subscribeUploadProgress,
