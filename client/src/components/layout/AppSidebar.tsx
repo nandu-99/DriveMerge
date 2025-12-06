@@ -41,7 +41,7 @@ export function AppSidebar() {
   return (
     <Sidebar className="border-r border-sidebar-border bg-sidebar-background">
       <SidebarContent className="bg-sidebar-background p-4">
-        { }
+
         <div className="px-2 mb-6">
           <div
           >
@@ -59,11 +59,11 @@ export function AppSidebar() {
                 el.style.display = "none";
               }}
             />{" "}
-            { }
+
           </div>
         </div>
 
-        { }
+
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2">Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -89,7 +89,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        { }
+
         {!collapsed && (
           <SidebarGroup className="mt-8">
             <SidebarGroupLabel className="flex items-center justify-between text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2">
@@ -168,7 +168,7 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        { }
+
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>
