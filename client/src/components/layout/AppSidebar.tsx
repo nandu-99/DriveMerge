@@ -38,10 +38,10 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar className="border-r-0">
-      <SidebarContent className="glass-card m-2 p-4">
-        {/* Logo/Title */}
-        <div className="px-2">
+    <Sidebar className="border-r border-sidebar-border bg-sidebar-background">
+      <SidebarContent className="bg-sidebar-background p-4">
+        {}
+        <div className="px-2 mb-6">
           <div
           >
             <img
@@ -49,8 +49,8 @@ export function AppSidebar() {
               alt="DriveMerge"
               className={
                 collapsed
-                  ? "object-contain h-7 mx-auto rounded-md p-0.5 bg-white/5"
-                  : "object-contain h-14 mx-auto rounded-md p-0.5 bg-white/5"
+                  ? "object-contain h-8 mx-auto"
+                  : "object-contain h-12 mx-auto"
               }
               style={{ display: "block" }}
               onError={(e) => {
@@ -58,66 +58,64 @@ export function AppSidebar() {
                 el.style.display = "none";
               }}
             />{" "}
-            {/* <span className="sr-only">DriveMerge</span> */}
+            {}
           </div>
         </div>
 
-        {/* Main Navigation */}
+        {}
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2">Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink
-                      to={item.url}
-                      end
-                      className={({ isActive }) =>
-                        `flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${isActive
-                          ? "bg-gradient-to-r from-primary/20 to-accent/20 text-primary font-medium"
-                          : "hover:bg-white/40"
-                        }`
-                      }
-                    >
-                      <item.icon className="h-5 w-5" />
-                      {!collapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
+                  <NavLink
+                    to={item.url}
+                    end
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2 rounded-md transition-all text-sm ${isActive
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
+                        : "text-gray-700 dark:text-gray-200 hover:text-foreground hover:bg-sidebar-accent"
+                      }`
+                    }
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {!collapsed && <span>{item.title}</span>}
+                  </NavLink>
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Connected Accounts */}
+        {}
         {!collapsed && (
-          <SidebarGroup className="mt-6">
-            <SidebarGroupLabel className="flex items-center justify-between">
+          <SidebarGroup className="mt-8">
+            <SidebarGroupLabel className="flex items-center justify-between text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2">
               <span>Connected Accounts</span>
               <button
                 onClick={() => setShowAdd((s) => !s)}
-                className="text-primary hover:text-accent transition-colors"
+                className="text-muted-foreground hover:text-foreground transition-colors"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3 w-3" />
               </button>
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <div className="space-y-3 mt-2">
                 {showAdd && (
-                  <div className="glass-card p-3">
+                  <div className="border border-sidebar-border rounded-lg p-3 bg-sidebar-accent/50">
                     <AddAccountForm onDone={() => setShowAdd(false)} />
                   </div>
                 )}
 
                 {isLoading && (
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-xs font-mono text-muted-foreground">
                     Loading accounts...
                   </div>
                 )}
 
                 {accounts.length === 0 && !isLoading && (
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-xs font-mono text-muted-foreground">
                     No connected accounts yet
                   </div>
                 )}
@@ -138,28 +136,23 @@ export function AppSidebar() {
                   return (
                     <div
                       key={acct.id}
-                      className="glass-card p-3 space-y-2"
+                      className="border border-sidebar-border rounded-md p-3 space-y-2 bg-sidebar-accent/30 hover:border-sidebar-primary/20 transition-colors"
                     >
                       <div className="flex items-center gap-3">
-                        <HardDrive className="h-5 w-5 text-primary flex-shrink-0" />
+                        <HardDrive className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">
+                          <div className="text-xs font-medium text-foreground truncate font-mono">
                             {acct.email}
                           </div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
                             {used} GB / {total} GB
                           </div>
                         </div>
                       </div>
                       <div className="w-full">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="text-xs font-semibold">
-                            {percentage}%
-                          </div>
-                        </div>
-                        <div className="h-2 bg-white/40 rounded-full overflow-hidden">
+                        <div className="h-1 bg-sidebar-border rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all"
+                            className="h-full bg-sidebar-primary rounded-full transition-all"
                             style={{ width: `${percentage}%` }}
                           />
                         </div>
@@ -172,7 +165,7 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        {/* Logout */}
+        {}
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>
@@ -180,9 +173,9 @@ export function AppSidebar() {
                 <SidebarMenuButton asChild>
                   <button
                     onClick={handleLogout}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg transition-all hover:bg-white/40 w-full"
+                    className="flex items-center gap-3 px-3 py-2 rounded-md transition-all text-muted-foreground hover:text-foreground hover:bg-sidebar-accent w-full text-sm"
                   >
-                    <LogOut className="h-5 w-5" />
+                    <LogOut className="h-4 w-4" />
                     {!collapsed && <span>Logout</span>}
                   </button>
                 </SidebarMenuButton>

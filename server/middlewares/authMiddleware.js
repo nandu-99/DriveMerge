@@ -19,16 +19,18 @@ const authMiddleware = (req, res, next) => {
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 
-  if (payload.t && payload.t !== "access") {
+  // ensure this is an access token (not a refresh token)
+  if (decoded.t && decoded.t !== "access") {
     return res.status(401).json({ message: "Invalid token type" });
   }
-
 
   req.user = decoded;
   next();
 };
 
-const optionalAuthMiddleware = async (req, res, next) => {
+// Optional auth middleware that allows requests to proceed without auth
+// but sets req.user if valid token is provided
+const optionalAuthMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   let token = null;

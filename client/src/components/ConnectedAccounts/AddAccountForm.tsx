@@ -19,7 +19,7 @@ export default function AddAccountForm({ onDone }: Props) {
         toast({ title: "Error", description: "Failed to get auth URL" });
         return;
       }
-      // redirect to Google OAuth flow handled by backend
+      
       window.location.href = String(url);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -33,13 +33,16 @@ export default function AddAccountForm({ onDone }: Props) {
   return (
     <form onSubmit={handleConnect} className="space-y-3">
       <div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs text-foreground leading-relaxed">
           Connect a Google Drive account — you'll be redirected to Google to
           authorize DriveMerge.
         </p>
       </div>
       <div>
-        <button type="submit" className="btn-primary-glass w-full">
+        <button
+          type="submit"
+          className="w-full inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-3"
+        >
           Connect Google Drive
         </button>
       </div>

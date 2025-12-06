@@ -30,7 +30,7 @@ interface FileUploadProps {
   className?: string;
 }
 
-const DEFAULT_MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const DEFAULT_MAX_FILE_SIZE = 5 * 1024 * 1024; 
 const UPLOAD_STEP_SIZE = 5;
 const FILE_SIZES = [
   "Bytes",
@@ -242,14 +242,14 @@ export default function FileUpload({
     ]
   );
 
-  // Use a counter to avoid dragenter/dragleave flicker when hovering children
+  
   const dragCounter = useRef(0);
 
   const handleDragEnter = useCallback(
     (e: DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       e.stopPropagation();
-      // Only set dragging if not uploading
+      
       if (status !== "uploading") {
         dragCounter.current += 1;
         setStatus("dragging");
@@ -262,7 +262,7 @@ export default function FileUpload({
     (e: DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       e.stopPropagation();
-      // keep dragging state
+      
       if (status !== "uploading") setStatus("dragging");
     },
     [status]

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { apiPost, apiGet } from "@/lib/api";
+import { setTokens } from "@/lib/auth";
 import GoogleSignButton from "@/components/Auth/GoogleSignButton";
 
 const Login = () => {
@@ -18,8 +19,9 @@ const Login = () => {
     try {
       const data = await apiPost("/auth/login", { email, password });
       const token = data?.token;
+      const refreshToken = data?.refreshToken;
       if (!token) throw new Error("Missing token from server");
-      localStorage.setItem("dm_token", token);
+      setTokens(token, refreshToken);
 
       try {
         const profile = await apiGet("/auth/me");
@@ -45,69 +47,80 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="glass-card max-w-md w-full p-8">
+    <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+      <div className="border border-border rounded-lg bg-card max-w-md w-full p-8 shadow-sm">
         <div className="flex justify-center mb-6">
-          <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center border border-white/10 shadow-lg shadow-primary/5">
-            {/* <img
-              src="/DriveMergeLogo.png"
-              alt="DriveMerge"
-              className="h-10 w-10 object-contain"
-            /> */}
-            <span className="text-2xl font-bold text-primary">DM</span>
+          <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
+            <span className="text-xl font-bold text-primary">DM</span>
           </div>
         </div>
-        <h1 className="text-2xl font-semibold mb-2">Sign in</h1>
-        <p className="text-sm text-muted-foreground mb-6">
-          Access your DriveMerge dashboard
-        </p>
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Welcome back</h1>
+          <p className="text-sm text-muted-foreground mt-2">
+            Enter your credentials to access your account
+          </p>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
+          <div className="space-y-2">
+            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="input-style"
+              className="flex h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="name@example.com"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Password</label>
+          <div className="space-y-2">
+            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="input-style"
+              className="flex h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="••••••••"
             />
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="pt-2">
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary-glass w-full"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 w-full"
             >
               {loading ? "Signing in..." : "Sign in"}
             </button>
-            <div className="text-center">
-              <Link
-                to="/register"
-                className="text-sm text-muted-foreground underline"
-              >
-                Create account
-              </Link>
-            </div>
           </div>
         </form>
 
-        <div className="mt-4">
-          <div className="text-center text-sm text-muted-foreground mb-2">
-            or
+        <div className="mt-6">
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">
+                Or continue with
+              </span>
+            </div>
           </div>
-          <GoogleSignButton />
+          <div className="mt-6">
+            <GoogleSignButton />
+          </div>
         </div>
+
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          Don&apos;t have an account?{" "}
+          <Link
+            to="/register"
+            className="underline underline-offset-4 hover:text-primary font-medium text-foreground"
+          >
+            Sign up
+          </Link>
+        </p>
       </div>
     </div>
   );

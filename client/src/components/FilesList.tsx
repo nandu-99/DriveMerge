@@ -85,8 +85,16 @@ export function FilesList() {
       }
     }
     load();
+
+    const handleUploadSuccess = () => {
+      load();
+    };
+
+    window.addEventListener('upload-success', handleUploadSuccess);
+
     return () => {
       mounted = false;
+      window.removeEventListener('upload-success', handleUploadSuccess);
     };
   }, []);
 
@@ -118,58 +126,59 @@ export function FilesList() {
   }
 
   return (
-    <div className="glass-card p-4 sm:p-6 w-full max-w-5xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
-        <h2 className="text-lg sm:text-xl font-semibold">Your Files</h2>
-        <span className="text-sm text-muted-foreground">
+    <div className="w-full max-w-5xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3 px-1">
+        <h2 className="text-sm font-medium text-foreground tracking-tight">Your Files</h2>
+        <span className="text-xs font-mono text-muted-foreground">
           {loading ? "Loading..." : `${files.length} file(s) stored`}
         </span>
       </div>
 
-      {error && <div className="text-sm text-red-400 mb-2">{error}</div>}
+      {error && <div className="text-xs font-mono text-red-400 mb-4 px-1">{error}</div>}
 
-      <div className="space-y-3">
+      <div className="space-y-2">
         {files.map((file) => (
           <div
             key={file.id}
-            className="glass-card max-w-80 sm:max-w-none p-4 glass-hover flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+            className="group border border-border rounded-md p-3 bg-card hover:bg-accent/50 hover:border-accent-foreground/20 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
           >
             <div className="flex items-start sm:items-center gap-3 flex-1 w-full">
-              <div className="p-2 sm:p-3 rounded-xl bg-gradient-to-br from-primary/20 to-accent/20 flex-shrink-0">
-                <File className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+              <div className="p-2 rounded-md bg-muted border border-border flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors">
+                <File className="h-4 w-4" />
               </div>
               <div className="flex-1 min-w-0 overflow-hidden">
-                <h3 className="font-medium mb-1 truncate break-all">{file.name}</h3>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-muted-foreground">
+                <h3 className="text-sm font-medium text-foreground mb-1 truncate break-all group-hover:text-primary transition-colors">{file.name}</h3>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] sm:text-xs font-mono text-muted-foreground">
                   <span>{formatBytes(file.sizeBytes)}</span>
-                  <span className="hidden xs:inline">•</span>
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1.5">
                     <HardDrive className="h-3 w-3" />
                     {file.accounts} account{file.accounts > 1 ? "s" : ""}
                   </span>
-                  <span className="hidden xs:inline">•</span>
                   <span>{file.chunks} chunks</span>
-                  <span className="hidden xs:inline">•</span>
                   <span>{file.uploadDate}</span>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end opacity-0 group-hover:opacity-100 transition-opacity">
               <button
                 onClick={() => handleDownload(file.id, file.name)}
-                className="p-2 rounded-lg hover:bg-white/40 transition-colors text-primary"
+                className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                title="Download"
               >
-                <Download className="h-5 w-5" />
+                <Download className="h-4 w-4" />
               </button>
-              <button className="p-2 rounded-lg hover:bg-white/40 transition-colors text-destructive">
-                <Trash2 className="h-5 w-5" />
+              <button
+                className="p-1.5 rounded-md hover:bg-red-500/10 transition-colors text-muted-foreground hover:text-red-500"
+                title="Delete"
+              >
+                <Trash2 className="h-4 w-4" />
               </button>
             </div>
           </div>
         ))}
         {!loading && files.length === 0 && (
-          <div className="text-sm text-muted-foreground text-center py-4">
+          <div className="text-xs font-mono text-muted-foreground text-center py-8 border border-dashed border-border rounded-lg">
             No files found
           </div>
         )}
@@ -177,9 +186,9 @@ export function FilesList() {
           <div className="flex justify-center mt-6">
             <button
               onClick={() => navigate("/files")}
-              className="px-4 py-2 rounded-md bg-white/5 text-sm"
+              className="px-4 py-1.5 rounded-md border border-border bg-muted/50 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
-              More
+              View All Files
             </button>
           </div>
         )}

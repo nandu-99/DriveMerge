@@ -68,9 +68,7 @@ async function fetchFilesFromApi() {
       size: formatBytes(Number(f.size || 0)),
       uploadedAt: f.modifiedAt ? new Date(f.modifiedAt).toLocaleString() : "",
       mime: f.mime,
-      thumbnailUrl: f.thumbnailUrl
-        ? `${f.thumbnailUrl}&access_token=${encodeURIComponent(localStorage.getItem("dm_token") || "")}`
-        : undefined,
+      thumbnailUrl: f.thumbnailUrl,
     }));
     return files as FileEntry[];
   } catch (e) {
@@ -99,25 +97,43 @@ export default function FileBrowser() {
   }, [files, q]);
 
   async function handleDownload(id: string) {
+    console.log("Download clicked for file:", id);
     try {
       const token =
         typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
-
-      const url = `${API_BASE}/drive/files/download?id=${encodeURIComponent(id)}&access_token=${encodeURIComponent(token || "")}`;
-
+      console.log("Token available:", !!token);
+      const url = `${API_BASE}/drive/files/download?id=${encodeURIComponent(id)}`;
+      console.log("Downloading from:", url);
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      console.log("Download response:", res.status, res.statusText);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Download failed:", errorText);
+        alert(`Failed to download file: ${res.statusText}`);
+        return;
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = "";
+      a.href = blobUrl;
+      const cd = res.headers.get("content-disposition") || "";
+      const m = cd.match(/filename\*=UTF-8''(.+)|filename="?([^;\n"]+)"?/);
+      a.download = m ? decodeURIComponent(m[1] || m[2]) : `file-${id}`;
+      console.log("Download filename:", a.download);
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
     } catch (err) {
       console.error("Download error:", err);
-      alert("Failed to initiate download. Please try again.");
+      alert("Failed to download file. Please try again.");
     }
   }
 
   async function handlePreview(id: string) {
+    console.log("Preview clicked for file:", id);
     const f = (files as FileEntry[]).find((x) => x.id === id) as
       | FileEntry
       | undefined;
@@ -125,7 +141,9 @@ export default function FileBrowser() {
       console.error("File not found:", id);
       return;
     }
+    console.log("File to preview:", f);
     try {
+      // Request a short-lived preview token from the server (safer than sharing long-lived tokens)
       const token =
         typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
       if (!token) {
@@ -134,6 +152,7 @@ export default function FileBrowser() {
         return;
       }
 
+      console.log("Requesting preview token...");
       const resp = await fetch(`${API_BASE}/drive/files/preview-token`, {
         method: "POST",
         headers: {
@@ -142,6 +161,7 @@ export default function FileBrowser() {
         },
         body: JSON.stringify({ fileId: id }),
       });
+      console.log("Preview token response:", resp.status, resp.statusText);
       if (!resp.ok) {
         const errorText = await resp.text();
         console.error("Preview token failed:", errorText);
@@ -149,6 +169,7 @@ export default function FileBrowser() {
         return;
       }
       const data = await resp.json();
+      console.log("Preview token data:", data);
       const previewToken = data.previewToken;
       if (!previewToken) {
         console.warn("No preview token in response");
@@ -156,9 +177,11 @@ export default function FileBrowser() {
         return;
       }
 
+      // Use the preview token in the streaming URL. The token is short-lived and bound to the file.
       const url = `${API_BASE}/drive/files/download?id=${encodeURIComponent(
         id
       )}&preview=1&preview_token=${encodeURIComponent(previewToken)}`;
+      console.log("Preview URL:", url);
       setPreview({ ...f, thumbnailUrl: url });
     } catch (err) {
       console.error("Preview error:", err);
@@ -174,89 +197,110 @@ export default function FileBrowser() {
   }
 
   return (
-    <div className="space-y-6 p-4 sm:p-6 max-w-7xl mx-auto">
+    <div className="space-y-4 p-4 sm:p-6">
       {/* Header - Mobile Responsive */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Files</h1>
-          <p className="text-muted-foreground mt-1">
-            Browse and manage your cloud files
-          </p>
-        </div>
+        <h1 className="text-2xl sm:text-3xl font-semibold">Files</h1>
 
         {/* Controls - Responsive Layout */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          {/* Desktop: Always visible search */}
-          <div className="w-full sm:w-72">
-            <div className="relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search files..."
-                className="input-style pl-11 w-full"
-              />
+          {/* Search Bar - Mobile Toggle */}
+          <div className="relative">
+            {/* Mobile: Icon button to toggle search */}
+            {/* <button
+              onClick={() => setSearchOpen(!searchOpen)}
+              className="sm:hidden w-full px-3 py-2 rounded-md bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center gap-2"
+              aria-label="Toggle search"
+            >
+              <Search className="h-4 w-4" />
+              <span className="text-sm">Search</span>
+            </button> */}
+
+            {/* Desktop: Always visible search */}
+            <div className="w-80 sm:w-64">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search files..."
+                  className="w-full pl-9 pr-3 py-2 border rounded-md bg-white/5 focus:bg-white/10 transition-colors"
+                />
+              </div>
             </div>
+
+            {/* Mobile: Expandable search */}
+            {/* {searchOpen && (
+              <div className="sm:hidden mt-2 w-full">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Search files..."
+                    className="w-full pl-9 pr-3 py-2 border rounded-md bg-white/5 focus:bg-white/10 transition-colors"
+                    autoFocus
+                  />
+                </div>
+              </div>
+            )} */}
           </div>
 
           {/* View Controls */}
-          <div className="flex items-center gap-2 p-1 rounded-xl border border-white/5">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setView("grid")}
-              className={`p-2 rounded-lg transition-all ${view === "grid"
-                ? "bg-background shadow-sm text-primary"
-                : "text-muted-foreground hover:text-foreground"
-                }`}
+              className={`flex-1 sm:flex-none px-3 py-2 rounded-md transition-all flex items-center justify-center gap-2 ${
+                view === "grid"
+                  ? "bg-primary text-primary-foreground shadow-md"
+                  : "bg-white/10 hover:bg-white/20"
+              }`}
               aria-pressed={view === "grid"}
               aria-label="Grid view"
             >
               <Grid3x3 className="h-4 w-4" />
+              <span className="text-sm sm:inline">Grid</span>
             </button>
             <button
               onClick={() => setView("list")}
-              className={`p-2 rounded-lg transition-all ${view === "list"
-                ? "bg-background shadow-sm text-primary"
-                : "text-muted-foreground hover:text-foreground"
-                }`}
+              className={`flex-1 sm:flex-none px-3 py-2 rounded-md transition-all flex items-center justify-center gap-2 ${
+                view === "list"
+                  ? "bg-primary text-primary-foreground shadow-md"
+                  : "bg-white/10 hover:bg-white/20"
+              }`}
               aria-pressed={view === "list"}
               aria-label="List view"
             >
               <List className="h-4 w-4" />
+              <span className="text-sm sm:inline">List</span>
+            </button>
+            <button
+              onClick={() => refetch()}
+              className="flex-1 sm:flex-none px-3 py-2 rounded-md bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center gap-2"
+              aria-label="Refresh files"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span className="text-sm sm:inline">Refresh</span>
             </button>
           </div>
-
-          <button
-            onClick={() => refetch()}
-            className="btn-glass p-2.5"
-            aria-label="Refresh files"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
         </div>
       </div>
 
       {/* Loading State */}
       {isLoading && (
-        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-          <RefreshCw className="h-8 w-8 animate-spin mb-4 text-primary/50" />
-          <p>Loading files...</p>
+        <div className="text-sm text-muted-foreground text-center py-8">
+          Loading files...
         </div>
       )}
 
       {/* Empty State */}
       {filtered.length === 0 && !isLoading && (
-        <div className="glass-card flex flex-col items-center justify-center py-16 text-center">
-          <div className="h-16 w-16 rounded-full bg-muted/30 flex items-center justify-center mb-4">
-            <Search className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-medium">No files found</h3>
-          <p className="text-muted-foreground mt-1 max-w-xs mx-auto">
-            {q ? "Try adjusting your search terms" : "Upload some files to get started"}
-          </p>
+        <div className="text-center py-12">
+          <div className="text-muted-foreground mb-2">No files found</div>
           {q && (
             <button
               onClick={() => setQ("")}
-              className="mt-4 text-sm text-primary hover:underline font-medium"
+              className="text-sm text-primary hover:underline"
             >
               Clear search
             </button>
@@ -266,7 +310,7 @@ export default function FileBrowser() {
 
       {/* Files Display */}
       {view === "list" ? (
-        <div className="space-y-2">
+        <div className="space-y-2 sm:space-y-3">
           {filtered.map((f: FileEntry) => (
             <FileListItem
               key={f.id}
@@ -294,50 +338,40 @@ export default function FileBrowser() {
       {/* Preview Modal - Responsive */}
       {preview && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 sm:p-6"
           onClick={closePreview}
         >
           <div
-            className="glass-card p-4 sm:p-6 max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border-white/10 bg-[#0a0a0a]/90"
+            className="bg-white dark:bg-gray-900 p-4 sm:p-6 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center mb-4 flex-shrink-0">
-              <div className="font-medium text-lg truncate pr-4 flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
-                  {preview.mime?.startsWith("image/") ? <Grid3x3 className="h-4 w-4" /> : <List className="h-4 w-4" />}
-                </span>
-                {preview.name}
+            <div className="flex justify-between items-center mb-3 sm:mb-4">
+              <div className="font-medium text-base sm:text-lg truncate pr-4">
+                Preview
               </div>
               <button
                 onClick={closePreview}
-                className="btn-glass px-3 py-1.5 text-sm"
+                className="text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors flex-shrink-0"
               >
                 Close
               </button>
             </div>
-            <div className="flex-1 flex items-center justify-center overflow-hidden bg-black/20 rounded-xl border border-white/5 relative min-h-[300px]">
+            <div className="flex items-center justify-center">
               {preview.mime?.startsWith("image/") ? (
                 <img
                   src={preview.thumbnailUrl || `${API_BASE}/drive/files/download?id=${encodeURIComponent(preview.id)}&preview=1`}
                   alt={preview.name}
-                  className="max-h-full max-w-full object-contain"
+                  className="max-h-[60vh] sm:max-h-[70vh] w-auto max-w-full rounded-md"
                 />
               ) : preview.mime?.startsWith("video/") ? (
                 <video
                   src={preview.thumbnailUrl || `${API_BASE}/drive/files/download?id=${encodeURIComponent(preview.id)}&preview=1`}
                   controls
-                  className="max-h-full max-w-full"
+                  className="max-h-[60vh] sm:max-h-[70vh] w-auto max-w-full rounded-md"
                 />
               ) : (
-                <div className="flex flex-col items-center justify-center text-muted-foreground">
-                  <List className="h-16 w-16 mb-4 opacity-20" />
-                  <p>No preview available</p>
-                  <button
-                    onClick={() => handleDownload(preview.id)}
-                    className="mt-4 btn-primary-glass text-sm"
-                  >
-                    Download to view
-                  </button>
+                <div className="text-sm text-center py-8 text-muted-foreground">
+                  No preview available for this file.
                 </div>
               )}
             </div>

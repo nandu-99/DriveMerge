@@ -1,23 +1,25 @@
 import { useEffect, useRef } from "react";
 import { apiPost } from "@/lib/api";
+import { setTokens } from "@/lib/auth";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "@/components/theme-provider";
 
 declare global {
   interface Window {
     google?:
-      | {
-          accounts?: {
-            id?: {
-              initialize: (opts: Record<string, unknown>) => void;
-              renderButton: (
-                el: HTMLElement,
-                opts: Record<string, unknown>
-              ) => void;
-            };
-          };
-        }
-      | undefined;
+    | {
+      accounts?: {
+        id?: {
+          initialize: (opts: Record<string, unknown>) => void;
+          renderButton: (
+            el: HTMLElement,
+            opts: Record<string, unknown>
+          ) => void;
+        };
+      };
+    }
+    | undefined;
   }
 }
 
@@ -45,6 +47,7 @@ export default function GoogleSignButton({
   const btnRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { theme } = useTheme();
 
   useEffect(() => {
     let mounted = true;
@@ -57,21 +60,33 @@ export default function GoogleSignButton({
           console.warn("VITE_GOOGLE_CLIENT_ID not set");
           return;
         }
+
+        
+        let buttonTheme = "outline";
+        if (theme === "dark") {
+          buttonTheme = "filled_black";
+        } else if (theme === "system") {
+          if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+            buttonTheme = "filled_black";
+          }
+        }
+
         window.google?.accounts?.id?.initialize({
           client_id: clientId,
           callback: async (resp: { credential?: string } | unknown) => {
             try {
               const credential =
                 typeof resp === "object" &&
-                resp !== null &&
-                "credential" in resp
+                  resp !== null &&
+                  "credential" in resp
                   ? (resp as { credential?: string }).credential
                   : undefined;
               if (!credential) throw new Error("No credential from Google");
               const data = await apiPost("/auth/google-login", { credential });
               const token = data?.token;
+              const refreshToken = data?.refreshToken;
               if (!token) throw new Error("No token from server");
-              localStorage.setItem("dm_token", token);
+              setTokens(token, refreshToken);
               try {
                 const profile = await (
                   await import("@/lib/api")
@@ -81,7 +96,7 @@ export default function GoogleSignButton({
                 if (profile?.name)
                   localStorage.setItem("dm_user_name", String(profile.name));
               } catch (e) {
-                // ignore
+                console.warn("Failed to load user profile after Google login", e);
               }
               toast({ title: "Signed in with Google" });
               navigate("/");
@@ -95,12 +110,13 @@ export default function GoogleSignButton({
           },
         });
 
-        // render a button inside the container
+        
         if (btnRef.current) {
           window.google?.accounts?.id?.renderButton(btnRef.current, {
-            theme: "outline",
+            theme: buttonTheme,
             size: "large",
             text: "signin_with",
+            width: 250, 
           } as Record<string, unknown>);
         }
       } catch (err) {
@@ -110,11 +126,11 @@ export default function GoogleSignButton({
     return () => {
       mounted = false;
     };
-  }, [navigate, toast]);
+  }, [navigate, toast, theme]);
 
   return (
-    <div className="flex justify-center">
-      <div ref={btnRef} />
+    <div className="flex justify-center w-full">
+      <div ref={btnRef} className="w-full flex justify-center" />
     </div>
   );
 }
