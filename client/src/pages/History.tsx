@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useUploads, UploadItem } from "@/context/uploads";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
+import { apiGet } from "@/lib/api";
 import {
     CheckCircle2,
     XCircle,
@@ -67,12 +68,8 @@ export default function History() {
     useEffect(() => {
         const fetchHistory = async () => {
             try {
-                const token = localStorage.getItem("dm_token");
-                const res = await fetch("/drive/transfers", {
-                    headers: token ? { Authorization: `Bearer ${token}` } : {},
-                });
-                if (res.ok) {
-                    const data = await res.json();
+                const data = await apiGet("/drive/transfers");
+                if (data) {
                     setHistoryJobs(data.jobs || []);
                 }
             } catch (error) {

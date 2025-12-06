@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import FileListItem from "./FileListItem";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import { Grid3x3, List, RefreshCw, Search } from "lucide-react";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "";
@@ -142,24 +142,9 @@ export default function FileBrowser() {
       }
 
       console.log("Requesting preview token...");
-      const resp = await fetch(`${API_BASE}/drive/files/preview-token`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ fileId: id }),
-      });
-      console.log("Preview token response:", resp.status, resp.statusText);
-      if (!resp.ok) {
-        const errorText = await resp.text();
-        console.error("Preview token failed:", errorText);
-        setPreview(f);
-        return;
-      }
-      const data = await resp.json();
-      console.log("Preview token data:", data);
-      const previewToken = data.previewToken;
+      const responseData = await apiPost("/drive/files/preview-token", { fileId: id }) as { previewToken: string };
+      console.log("Preview token data:", responseData);
+      const previewToken = responseData.previewToken;
       if (!previewToken) {
         console.warn("No preview token in response");
         setPreview(f);
