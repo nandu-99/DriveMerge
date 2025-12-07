@@ -1,4 +1,4 @@
-import { Home, Settings, Eye, Plus, HardDrive, LogOut, History } from "lucide-react";
+import { Home, Settings, Eye, Plus, HardDrive, LogOut, History, Trash2 } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
@@ -15,6 +15,16 @@ import {
 import AddAccountForm from "@/components/ConnectedAccounts/AddAccountForm";
 import { useConnectedAccounts } from "@/hooks/use-connected-accounts";
 import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const menuItems = [
   { title: "Home", url: "/", icon: Home },
@@ -30,6 +40,13 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const { data: accounts = [], isLoading } = useConnectedAccounts();
   const [showAdd, setShowAdd] = useState(false);
+
+  const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "";
+
+
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; account?: { id: string; email: string } }>({
+    open: false,
+  });
 
   const handleLogout = () => {
     localStorage.removeItem("dm_token");
@@ -134,6 +151,9 @@ export function AppSidebar() {
                     0,
                     Math.min(100, Math.round((used / total) * 100))
                   );
+                  const openDeleteDialog = () => {
+                    setDeleteDialog({ open: true, account: { id: acct.id, email: acct.email } });
+                  };
                   return (
                     <div
                       key={acct.id}
@@ -150,7 +170,15 @@ export function AppSidebar() {
                           <div className="text-[10px] text-muted-foreground/80 font-mono mt-0.5 group-hover/item:text-muted-foreground">
                             {formatBytes(used)} of {formatBytes(total)} used
                           </div>
+                          
                         </div>
+                        <button
+                            onClick={openDeleteDialog}
+                            className="transition-opacity text-destructive hover:bg-destructive/10 rounded p-1"
+                            title="Remove account"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                       </div>
                       <div className="w-full px-0.5">
                         <div className="h-1 bg-sidebar-border/50 rounded-full overflow-hidden">
@@ -167,6 +195,44 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
+
+        <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ ...deleteDialog, open })}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove account?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to remove <span className="font-medium">{deleteDialog.account?.email}</span>?
+                <br />
+                This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={async () => {
+                  if (!deleteDialog.account) return;
+
+                  try {
+                    await fetch(`${API_BASE}/drive/disconnect`, {
+                      method: "POST",
+                      headers: {
+                        Authorization: `Bearer ${localStorage.getItem("dm_token")}`,
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({ email: deleteDialog.account?.email }),
+                    });
+                    window.location.reload();
+                  } catch (err) {
+                    alert("Failed to delete account");
+                  }
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
 
         <SidebarGroup className="mt-auto">
