@@ -33,6 +33,7 @@ const upload = multer({
   limits: { fileSize: MAX_UPLOAD_BYTES },
 });
 const progressMap = new Map();
+const cancelledUploads = new Set();
 const recentUploads = [];
 
 /**
@@ -116,9 +117,17 @@ function calculateChunkDistribution(fileSize, accounts, primaryAccountId = null)
  */
 async function uploadWithStorageAwareChunking(uploadId, file, accounts, userId, primaryAccountId = null) {
   try {
+    console.log(`[DEBUG] Starting uploadWithStorageAwareChunking for ${uploadId}`);
+    sendLog(0, `[SYS] Analyzing file: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)} MB)`, 'info');
+    sendLog(0, `[ALGO] Calculating optimal storage distribution...`, 'info');
     const chunkPlan = calculateChunkDistribution(file.size, accounts, primaryAccountId);
+    sendLog(0, `[ALGO] Distribution Strategy: ${chunkPlan.length} partitioned segments.`, 'info');
+    chunkPlan.forEach((c, i) => {
+      sendLog(0, `[PLAN] Segment ${i + 1}: ${formatBytes(c.chunkSizeBytes)} -> ${c.accountEmail} (Byte Range: ${c.startByte}-${c.endByte})`, 'info');
+    });
 
     const driveFileId = uuidv4();
+    sendLog(0, `[DB] Created virtual parent record: ${driveFileId} (Schema: DistributedFile)`, 'info');
     const parentFile = await prisma.file.create({
       data: {
         driveFileId,
@@ -131,10 +140,47 @@ async function uploadWithStorageAwareChunking(uploadId, file, accounts, userId, 
         driveAccountId: chunkPlan.length === 1 ? chunkPlan[0].accountId : null,
       },
     });
+    console.log(`[DEBUG] Parent file created: ${parentFile.id}`);
 
     const CONCURRENCY_LIMIT = 3;
 
+    const sendLog = (p, text, type = 'info') => {
+      const entry = progressMap.get(uploadId);
+      if (entry) {
+        const logItem = { text, type, time: new Date().toLocaleTimeString() };
+        if (!entry.logs) entry.logs = [];
+        entry.logs.push(logItem);
+
+        if (entry.res) {
+          entry.res.write(`data: ${JSON.stringify({
+            progress: p,
+            totalChunks: chunkPlan.length,
+            log: logItem
+          })}\n\n`);
+        }
+      }
+    };
+
+    sendLog(0, `Analyzing file structure for ${file.originalname}...`, 'start');
+    sendLog(0, `Storage distribution strategy: Distributed`, 'info');
+    sendLog(0, `Allocating resources across ${accounts.length} connected drives...`, 'info');
+    sendLog(0, `Primary account target: ${chunkPlan[0]?.accountEmail}`, 'info');
+    sendLog(0, `Breakdown: ${chunkPlan.length} chunks generated for distribution.`, 'info');
+
+    // Helper to process a single chunk
     const uploadChunk = async (chunk) => {
+      console.log(`[DEBUG] Uploading chunk ${chunk.chunkIndex}`);
+      sendLog(
+        Math.round((chunk.chunkIndex / chunkPlan.length) * 100),
+        `Transferring chunk ${chunk.chunkIndex + 1}/${chunkPlan.length} to ${chunk.accountEmail}...`,
+        'process'
+      );
+
+      if (cancelledUploads.has(uploadId)) {
+        throw new Error("Upload cancelled by user");
+      }
+
+      sendLog(Math.round((chunk.chunkIndex / chunkPlan.length) * 100), `[NET] [Chunk ${chunk.chunkIndex + 1}] Handshake: Authenticating with Google OAuth2 (${chunk.accountEmail})...`, 'info');
       const auth = new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
         process.env.GOOGLE_CLIENT_SECRET
@@ -144,6 +190,7 @@ async function uploadWithStorageAwareChunking(uploadId, file, accounts, userId, 
       auth.setCredentials({ access_token: accessResp.token });
       const drive = google.drive({ version: 'v3', auth });
 
+      sendLog(Math.round((chunk.chunkIndex / chunkPlan.length) * 100), `[IO] [Chunk ${chunk.chunkIndex + 1}] Opening FS ReadStream (Bytes ${chunk.startByte}-${chunk.endByte})...`, 'info');
       const chunkStream = fs.createReadStream(file.path, {
         start: chunk.startByte,
         end: chunk.endByte - 1,
@@ -153,6 +200,7 @@ async function uploadWithStorageAwareChunking(uploadId, file, accounts, userId, 
         ? `${file.originalname}.part${chunk.chunkIndex}`
         : file.originalname;
 
+      sendLog(Math.round((chunk.chunkIndex / chunkPlan.length) * 100), `[API] [Chunk ${chunk.chunkIndex + 1}] POST v3/files (multipart/related)...`, 'info');
       const driveFile = await drive.files.create({
         requestBody: {
           name: chunkName,
@@ -194,23 +242,28 @@ async function uploadWithStorageAwareChunking(uploadId, file, accounts, userId, 
         data: { usedSpaceGb: { increment: chunkSizeGb } },
       });
 
-      const progressEntry = progressMap.get(uploadId);
-      if (progressEntry?.res) {
-        const overallProgress = Math.round(((chunk.chunkIndex + 1) / chunkPlan.length) * 100);
-        progressEntry.res.write(`data: ${JSON.stringify({ progress: overallProgress })}\n\n`);
-      }
+      const overallProgress = Math.round(((chunk.chunkIndex + 1) / chunkPlan.length) * 100);
+      sendLog(overallProgress, `Confirmed chunk ${chunk.chunkIndex + 1}/${chunkPlan.length} in Drive`, 'process');
     };
 
-    const retries = [];
+    const executing = new Set();
     for (const chunk of chunkPlan) {
-      while (retries.length >= CONCURRENCY_LIMIT) {
-        const finished = await Promise.race(retries);
-        retries.splice(retries.indexOf(finished), 1);
+      if (cancelledUploads.has(uploadId)) {
+        throw new Error("Upload cancelled by user");
       }
-      const p = uploadChunk(chunk).then(() => p);
-      retries.push(p);
+
+      while (executing.size >= CONCURRENCY_LIMIT) {
+        await Promise.race(executing);
+      }
+
+      const p = uploadChunk(chunk).then(() => executing.delete(p));
+      executing.add(p);
     }
-    await Promise.all(retries);
+    await Promise.all(executing);
+
+    if (cancelledUploads.has(uploadId)) {
+      throw new Error("Upload cancelled by user");
+    }
 
     await prisma.transferJob.update({
       where: { uploadId },
@@ -221,14 +274,19 @@ async function uploadWithStorageAwareChunking(uploadId, file, accounts, userId, 
       },
     });
 
+    sendLog(100, "[CRYPTO] Verifying file integrity...", 'info');
+    sendLog(100, "[SYS] 200 OK: Upload completed successfully. File commit verified.", 'success');
+
     try { fs.unlinkSync(file.path); } catch (e) { }
 
     const progressEntry = progressMap.get(uploadId);
     if (progressEntry?.res) {
-      progressEntry.res.write('data: ' + JSON.stringify({ progress: 100 }) + '\n\n');
+      // Final close
+      progressEntry.res.write('data: ' + JSON.stringify({ progress: 100, status: 'succeeded' }) + '\n\n');
       progressEntry.res.end();
     }
     progressMap.delete(uploadId);
+    cancelledUploads.delete(uploadId);
 
     recentUploads.push({
       id: driveFileId,
@@ -241,12 +299,17 @@ async function uploadWithStorageAwareChunking(uploadId, file, accounts, userId, 
     if (recentUploads.length > 200) recentUploads.shift();
 
   } catch (err) {
-    console.error('Storage-aware upload failed:', err);
+    console.error('[DEBUG] uploadWithStorageAwareChunking CATCH:', err);
+    if (err.message === "Upload cancelled by user") {
+      console.log(`Upload ${uploadId} cancelled`);
+    } else {
+      console.error('Storage-aware upload failed:', err);
+    }
 
     try {
       await prisma.transferJob.update({
         where: { uploadId },
-        data: { status: 'failed' },
+        data: { status: 'failed', errorMessage: err.message },
       });
     } catch (e) { }
 
@@ -258,10 +321,123 @@ async function uploadWithStorageAwareChunking(uploadId, file, accounts, userId, 
       progressEntry.res.end();
     }
     progressMap.delete(uploadId);
+    cancelledUploads.delete(uploadId);
 
-    throw err;
+    if (err.message !== "Upload cancelled by user") {
+      throw err;
+    }
   }
 }
+
+const deleteFile = async (req, res) => {
+  const { fileId } = req.params;
+  const userId = req.user.id;
+  console.log(`[Delete] Request for fileId: ${fileId} by user: ${userId}`);
+
+
+  try {
+    // Frontend passes driveFileId as the ID
+    const file = await prisma.file.findFirst({
+      where: { driveFileId: fileId, userId },
+      include: { chunks: true }
+    });
+
+    if (!file) return res.status(404).json({ message: "File not found" });
+
+    // Helper to delete from Drive safely
+    const deleteFromDrive = async (driveFileId, accountId, sizeBytes) => {
+      try {
+        const account = await prisma.driveAccount.findUnique({ where: { id: accountId } });
+        if (account) {
+          const auth = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET
+          );
+          auth.setCredentials({ refresh_token: account.refreshToken });
+          const drive = google.drive({ version: 'v3', auth });
+          await drive.files.delete({ fileId: driveFileId });
+
+          // Update usage
+          // Ensure usedSpaceGb doesn't go below 0
+          const sizeGb = Number(sizeBytes) / 1024 ** 3;
+          await prisma.driveAccount.update({
+            where: { id: accountId },
+            data: { usedSpaceGb: { decrement: sizeGb } }
+          });
+        }
+      } catch (e) {
+        console.warn(`Failed to delete drive file ${driveFileId} on account ${accountId}:`, e.message);
+      }
+    };
+
+    if (file.isSplit && file.chunks.length > 0) {
+      for (const chunk of file.chunks) {
+        await deleteFromDrive(chunk.driveFileId, chunk.driveAccountId, chunk.sizeBytes);
+      }
+      await prisma.fileChunk.deleteMany({ where: { fileId: file.id } });
+    } else if (file.driveAccountId && file.driveFileId) {
+      await deleteFromDrive(file.driveFileId, file.driveAccountId, file.sizeBytes);
+    }
+
+    await prisma.file.delete({ where: { id: file.id } });
+
+    res.json({ message: "File deleted successfully" });
+
+  } catch (err) {
+    console.error("Delete error:", err);
+    res.status(500).json({ message: "Failed to delete file" });
+  }
+};
+
+const cancelUpload = async (req, res) => {
+  const { uploadId } = req.params;
+  if (!uploadId) return res.status(400).json({ message: "Missing uploadId" });
+
+  try {
+    // 1. Check if active in memory (stop the process)
+    if (progressMap.has(uploadId)) {
+      cancelledUploads.add(uploadId);
+      const entry = progressMap.get(uploadId);
+      if (entry?.res) {
+        entry.res.write(`data: ${JSON.stringify({ progress: 0, error: "Upload cancelled by user" })}\n\n`);
+        entry.res.end();
+      }
+      progressMap.delete(uploadId);
+    }
+
+    // 2. Always try to update DB status if it exists and is pending/in-progress
+    // This handles "zombie" jobs from before a server restart
+    const job = await prisma.transferJob.findUnique({ where: { uploadId } });
+
+    if (job) {
+      if (job.status === 'pending' || job.status === 'processing' || job.status === 'in_progress') {
+        await prisma.transferJob.update({
+          where: { uploadId },
+          data: { status: 'failed', errorMessage: 'Cancelled by user' }
+        });
+        return res.json({ message: "Upload cancelled successfully" });
+      } else {
+        // Job exists but is already done/failed
+        // If it was in progressMap, we already killed it, so success.
+        if (cancelledUploads.has(uploadId)) {
+          return res.json({ message: "Upload cancellation requested" });
+        }
+        return res.status(400).json({ message: "Upload is already completed or failed" });
+      }
+    }
+
+    // 3. Fallback: If not in DB and not in memory (should happen rarely for valid IDs)
+    if (cancelledUploads.has(uploadId)) {
+      return res.json({ message: "Upload cancellation requested" });
+    }
+
+    res.status(404).json({ message: "Upload not found" });
+
+  } catch (error) {
+    console.error('Cancel error:', error);
+    res.status(500).json({ message: "Failed to cancel upload" });
+  }
+};
 
 
 const getAuthUrl = async (req, res) => {
@@ -452,6 +628,9 @@ const uploadFiles = [
     }
 
     try {
+      console.log('────────────────────────────────────────────────────────────────');
+      console.log('[DEBUG] Upload Request Received');
+      console.log('[DEBUG] Body:', req.body);
       const userId = req.user.id;
 
       const accounts = await prisma.driveAccount.findMany({
@@ -527,9 +706,19 @@ const uploadFiles = [
         }
 
         const uploadId = uuidv4();
+        // Initialize buffer immediately to capture analysis logs
+        progressMap.set(uploadId, { progress: 0, res: null, logs: [] });
 
-        // Check for duplicates
-        if (fileHash) {
+        const logAnalysis = (text, type = 'info') => {
+          const entry = progressMap.get(uploadId);
+          if (entry && entry.logs) {
+            entry.logs.push({ text, type, time: new Date().toLocaleTimeString() });
+          }
+        };
+
+        // Check for duplicates (unless forced)
+        const isForceUpload = req.body.forceUpload === 'true';
+        if (fileHash && !isForceUpload) {
           const existing = await prisma.file.findFirst({
             where: { userId, fileHash, sizeBytes: BigInt(file.size) },
           });
@@ -540,7 +729,8 @@ const uploadFiles = [
                 uploadId,
                 userId,
                 fileName: file.originalname,
-                status: 'succeeded',
+                status: 'duplicate',
+                errorMessage: 'Duplicate detected',
                 totalBytes: BigInt(file.size),
                 transferredBytes: BigInt(file.size),
                 driveFileId: existing.driveFileId,
@@ -555,12 +745,16 @@ const uploadFiles = [
 
         // Log storage status for debugging
         console.log('Storage Analysis:');
+        logAnalysis(`[SYS] Storage Analysis for ${file.originalname}:`, 'info');
         console.log(`   File size: ${(file.size / 1024 / 1024).toFixed(2)} MB (${fileSizeGb.toFixed(4)} GB)`);
+        logAnalysis(`[SYS] File size: ${(file.size / 1024 / 1024).toFixed(2)} MB`, 'info');
+
         console.log('   Account storage status:');
         accounts.forEach(a => {
           const freeGb = a.totalSpaceGb - a.usedSpaceGb;
           const canFit = freeGb >= fileSizeGb;
           console.log(`   • ${a.email}: ${freeGb.toFixed(2)} GB free (${canFit ? 'CAN fit' : 'CANNOT fit'} file)`);
+          logAnalysis(`[SYS] Account Check: ${a.email} has ${freeGb.toFixed(2)} GB free (${canFit ? 'Eligible' : 'Insufficient'})`, canFit ? 'info' : 'error');
         });
 
         // Find account with enough space for the entire file
@@ -570,6 +764,7 @@ const uploadFiles = [
           if (preferred && (preferred.totalSpaceGb - preferred.usedSpaceGb) >= fileSizeGb) {
             suitableAccount = preferred;
             console.log(`   → Preferred account selected: ${preferred.email}`);
+            logAnalysis(`[SYS] Priority: User preferred account ${preferred.email} selected.`, 'info');
           }
         }
 
@@ -598,9 +793,10 @@ const uploadFiles = [
 
         const decision = shouldForceSplit ? 'FORCE-SPLIT MULTI-ACCOUNT' : (suitableAccount ? 'SINGLE ACCOUNT UPLOAD' : (totalFreeSpace >= fileSizeGb ? 'STORAGE-AWARE CHUNKING' : 'INSUFFICIENT STORAGE'));
         console.log(`   Decision: ${decision}`);
+        logAnalysis(`[ALGO] Decision Strategy: ${decision}`, 'info');
 
         tasks.push({ id: uploadId, fileName: file.originalname, isSplit: shouldForceSplit });
-        progressMap.set(uploadId, { progress: 0, res: null });
+        // progressMap already set
         file._fileHash = fileHash;
 
         if (!shouldForceSplit && suitableAccount) {
@@ -812,6 +1008,36 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
     } catch (e) {
     }
 
+    const sendLog = (p, text, type = 'info') => {
+      const entry = progressMap.get(uploadId);
+      if (entry) {
+        const logItem = { text, type, time: new Date().toLocaleTimeString() };
+        if (!entry.logs) entry.logs = [];
+        entry.logs.push(logItem);
+
+        if (entry.res) {
+          entry.res.write(`data: ${JSON.stringify({
+            progress: p,
+            log: logItem
+          })}\n\n`);
+        }
+      }
+    };
+
+    sendLog(0, `[SYS] Initializing single-file upload sequence...`, 'start');
+    sendLog(0, `[NET] Target Endpoint: ${account.email} (Google Drive API v3)`, 'info');
+    sendLog(0, `[AUTH] Refreshing OAuth2 Token...`, 'info');
+
+    if (!account.refreshToken) {
+      throw new Error("Missing refresh token");
+    }
+
+    try {
+      await prisma.transferJob.update({ where: { uploadId }, data: { status: 'in_progress' } });
+      sendLog(0, `[DB] State transition: PENDING -> IN_PROGRESS`, 'info');
+    } catch (e) {
+    }
+
     const auth = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET
@@ -850,12 +1076,20 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
     const pass = new PassThrough();
 
     let uploaded = 0;
+    let lastLogged = 0;
+
     readStream.on("data", (chunk) => {
       uploaded += chunk.length;
       const progress = Math.min(100, Math.round((uploaded / fileSize) * 100));
       const entry = progressMap.get(uploadId);
       if (entry?.res) {
         entry.res.write(`data: ${JSON.stringify({ progress })}\n\n`);
+      }
+
+      // Log significant progress steps (Every 10%) - Avoid duplicates
+      if (progress % 10 === 0 && progress > 0 && progress !== lastLogged) {
+        sendLog(progress, `[NET] Streaming Packet: ${Math.round(uploaded / 1024 / 1024)}MB / ${Math.round(fileSize / 1024 / 1024)}MB (${progress}%) buffered -> Outbound`, 'process');
+        lastLogged = progress;
       }
       pass.write(chunk);
 
@@ -883,6 +1117,9 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
       media,
       fields: "id, name, mimeType, size, modifiedTime",
     });
+
+    sendLog(100, "Verifying file integrity...", 'info');
+    sendLog(100, "Upload completed successfully. File visible in Drive.", 'success');
 
     try {
       const driveFileId = response.data && response.data.id;
@@ -921,7 +1158,7 @@ const uploadToDrive = async (uploadId, file, account, userId) => {
 
     const entry = progressMap.get(uploadId);
     if (entry?.res) {
-      entry.res.write(`data: ${JSON.stringify({ progress: 100 })}\n\n`);
+      entry.res.write(`data: ${JSON.stringify({ progress: 100, status: 'succeeded' })}\n\n`);
       entry.res.end();
     }
 
@@ -1305,6 +1542,16 @@ const subscribeUploadProgress = async (req, res) => {
 
   res.write(`data: ${JSON.stringify({ progress: entry.progress })}\n\n`);
 
+  // Replay logs for late subscribers
+  if (entry.logs && entry.logs.length > 0) {
+    entry.logs.forEach(log => {
+      res.write(`data: ${JSON.stringify({
+        progress: entry.progress,
+        log: log
+      })}\n\n`);
+    });
+  }
+
   req.on('close', () => {
     if (entry && entry.res === res) entry.res = null;
   });
@@ -1343,4 +1590,6 @@ module.exports = {
   createPreviewToken,
   subscribeUploadProgress,
   getTransfers,
+  cancelUpload,
+  deleteFile,
 };

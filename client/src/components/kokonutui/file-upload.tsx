@@ -13,6 +13,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { UploadCloud, File as FileIcon, ChevronDown, Check, HardDrive } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as Select from "@radix-ui/react-select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type FileStatus = "idle" | "dragging" | "uploading" | "error";
 
@@ -243,9 +253,17 @@ export default function FileUpload({
   const [status, setStatus] = useState<FileStatus>("idle");
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<FileError | null>(null);
+  const [duplicateFile, setDuplicateFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { addUpload, updateProgress, markDone, markError, removeUpload } =
-    useUploads();
+  const {
+    addUpload,
+    updateProgress,
+    updateUploadId,
+    markDone,
+    markError,
+    markDuplicate,
+    removeUpload,
+  } = useUploads();
   const uploadIdRef = useRef<string | null>(null);
 
   const { data: accountsRaw = [] } = useConnectedAccounts();
@@ -317,7 +335,8 @@ export default function FileUpload({
     [onUploadError]
   );
 
-  const uploadSingleFile = (uploadingFile: File, uploadId: string) => {
+  const uploadSingleFile = (uploadingFile: File, uploadId: string, force = false) => {
+    console.log('[DEBUG] uploadSingleFile called. Name:', uploadingFile.name, 'Force:', force);
     const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "";
     const url = API_BASE
       ? `${API_BASE.replace(/\/$/, "")}/drive/upload/files`
@@ -327,6 +346,9 @@ export default function FileUpload({
 
     if (selectedAccount && selectedAccount !== "auto") {
       form.append("driveAccountId", selectedAccount);
+    }
+    if (force) {
+      form.append("forceUpload", "true");
     }
 
     form.append("files", uploadingFile, uploadingFile.name);
@@ -356,15 +378,34 @@ export default function FileUpload({
           serverResp = null;
         }
 
-        setProgress(100);
-        setStatus("idle");
-        markDone(uploadId);
-        onUploadSuccess?.(uploadingFile);
+        // Parse response which can be array or object
+        const task = Array.isArray(serverResp) ? serverResp[0] : (serverResp?.tasks?.[0] || serverResp);
+        const isDuplicate = task?.status === 'duplicate' || task?.duplicate === true;
+
+        if (isDuplicate) {
+          setProgress(100);
+          markDuplicate(uploadId);
+          setDuplicateFile(uploadingFile);
+          setStatus("idle");
+          window.dispatchEvent(new CustomEvent('upload-success'));
+
+          setTimeout(() => {
+            removeUpload(uploadId);
+            uploadIdRef.current = null;
+          }, 2000);
+        } else {
+          // For valid uploads, we DO NOT mark done yet. We wait for SSE.
+          // Just ensure it's in "uploading" state in context
+          updateProgress(uploadId, 0);
+        }
 
         try {
-          const firstId = serverResp?.[0]?.id || serverResp?.id || (serverResp?.tasks && serverResp.tasks[0]?.id);
+          const firstId = task?.id;
           const token = localStorage.getItem("dm_token");
           if (firstId && typeof window !== 'undefined') {
+            // CRITICAL: Link local ID to server ID
+            updateUploadId(uploadId, firstId);
+
             const esUrl = token
               ? `/drive/upload/progress/${encodeURIComponent(firstId)}?access_token=${encodeURIComponent(token)}`
               : `/drive/upload/progress/${encodeURIComponent(firstId)}`;
@@ -374,7 +415,30 @@ export default function FileUpload({
                 const d = JSON.parse(ev.data || '{}');
                 if (typeof d.progress === 'number') {
                   setProgress(d.progress);
-                  updateProgress(firstId, d.progress);
+                  updateProgress(firstId, d.progress, {
+                    totalChunks: d.totalChunks,
+                    currentChunk: d.chunkIndex,
+                    log: d.log
+                  });
+
+                  // If complete
+                  if (d.progress === 100 || d.status === 'succeeded') {
+                    markDone(uploadId);
+                    setStatus("idle");
+                    onUploadSuccess?.(uploadingFile);
+                    window.dispatchEvent(new CustomEvent('upload-success'));
+                    es.close();
+
+                    // Do NOT auto-remove. Let it stay visible until refreshed or new upload.
+                    uploadIdRef.current = null;
+                  } else if (d.error) {
+                    es.close();
+                    const err = { message: d.error, code: "UPLOAD_FAILED" };
+                    markError(uploadId);
+                    onUploadError?.(err);
+                    setStatus("error");
+                    setError(err);
+                  }
                 }
               } catch (err) {
                 console.debug('sse:parse', err);
@@ -388,11 +452,6 @@ export default function FileUpload({
         } catch (err) {
           console.debug('subscribe sse failed', err);
         }
-
-        setTimeout(() => {
-          removeUpload(uploadId);
-          uploadIdRef.current = null;
-        }, 2000);
       } else {
         const err = {
           message: `Upload failed with status ${xhr.status}`,
@@ -840,6 +899,40 @@ export default function FileUpload({
           </div>
         </div>
       </div>
+
+      {/* Duplicate Alert */}
+      <AlertDialog open={!!duplicateFile} onOpenChange={(open) => !open && setDuplicateFile(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Duplicate File Detected</AlertDialogTitle>
+            <AlertDialogDescription>
+              The file <span className="font-medium text-foreground">"{duplicateFile?.name}"</span> already exists in your drive.
+              The upload was skipped, and the existing file is preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDuplicateFile(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                console.log('[DEBUG] Upload Anyway Clicked. File:', duplicateFile);
+                if (duplicateFile) {
+                  const newId = addUpload({
+                    id: String(Date.now()) + Math.random().toString(36).slice(2, 8),
+                    name: duplicateFile.name,
+                    size: duplicateFile.size,
+                  });
+                  uploadIdRef.current = newId;
+                  setDuplicateFile(null);
+                  uploadSingleFile(duplicateFile, newId, true);
+                }
+              }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              Upload Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

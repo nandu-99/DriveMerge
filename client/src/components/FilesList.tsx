@@ -1,8 +1,18 @@
 
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { File, Download, Trash2, HardDrive } from "lucide-react";
-import { apiGet } from "@/lib/api";
+import { File, Download, Trash2, HardDrive, AlertTriangle } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { apiGet, apiDelete } from "@/lib/api";
 
 interface FileItem {
   id: string;
@@ -19,7 +29,15 @@ export function FilesList() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fileToDelete, setFileToDelete] = useState<FileItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const navigate = useNavigate();
+
+  const mountedRef = React.useRef(true);
+
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -115,6 +133,21 @@ export function FilesList() {
     }
   }
 
+  async function confirmDelete() {
+    if (!fileToDelete) return;
+    setIsDeleting(true);
+    try {
+      await apiDelete(`/drive/files/${fileToDelete.id}`);
+      setFiles(prev => prev.filter(f => f.id !== fileToDelete.id));
+      setFileToDelete(null);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to delete file");
+    } finally {
+      if (mountedRef.current) setIsDeleting(false);
+    }
+  }
+
   return (
     <div className="w-full max-w-5xl mx-auto space-y-4">
       <div className="flex items-center justify-between px-1">
@@ -200,6 +233,7 @@ export function FilesList() {
                           <Download className="h-4 w-4" />
                         </button>
                         <button
+                          onClick={() => setFileToDelete(file)}
                           className="p-2 rounded-md hover:bg-red-500/10 hover:text-red-500 text-muted-foreground transition-colors"
                           title="Delete"
                         >
@@ -214,6 +248,31 @@ export function FilesList() {
           </table>
         </div>
       </div>
-    </div>
+
+      <AlertDialog open={!!fileToDelete} onOpenChange={(open) => !open && setFileToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <span className="font-medium text-foreground">{fileToDelete?.name}</span> from your Google Drive accounts.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDelete();
+              }}
+              disabled={isDeleting}
+              className="bg-red-500 hover:bg-red-600 focus:ring-red-500"
+            >
+              {isDeleting ? "Deleting..." : "Delete File"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div >
   );
 }

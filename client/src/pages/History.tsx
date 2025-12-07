@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useUploads, UploadItem } from "@/context/uploads";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import {
     CheckCircle2,
     XCircle,
@@ -12,13 +12,14 @@ import {
     RotateCw,
     Download,
     Eye,
+    Copy,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
 type TransferJob = {
     uploadId: string;
     fileName: string;
-    status: "pending" | "in_progress" | "succeeded" | "failed";
+    status: "pending" | "in_progress" | "succeeded" | "failed" | "duplicate";
     totalBytes: number;
     transferredBytes: number;
     createdAt: string;
@@ -60,6 +61,18 @@ export default function History() {
         navigate('/', { state: { reuploadFile: fileName } });
     };
 
+    const handleCancel = async (uploadId: string) => {
+        try {
+            await apiPost(`/drive/upload/cancel/${uploadId}`, {});
+            // Optimistically update status
+            setHistoryJobs(prev => prev.map(job =>
+                job.uploadId === uploadId ? { ...job, status: 'failed' } : job
+            ));
+        } catch (error) {
+            console.error("Failed to cancel upload", error);
+        }
+    };
+
     const handleFileClick = (fileName: string) => {
 
         navigate('/files');
@@ -98,7 +111,8 @@ export default function History() {
                     uploadId: upload.id,
                     fileName: upload.name,
                     status: upload.status === 'uploading' ? 'in_progress' :
-                        upload.status === 'error' ? 'failed' : 'succeeded',
+                        upload.status === 'error' ? 'failed' :
+                            upload.status === 'duplicate' ? 'duplicate' : 'succeeded',
                     totalBytes: upload.size,
                     transferredBytes: Math.floor((upload.size * upload.progress) / 100),
                     createdAt: upload.startedAt,
@@ -154,7 +168,7 @@ export default function History() {
                             ) : (
                                 mergedItems.map((item) => {
                                     const activeUpload = uploads.find(u => u.id === item.uploadId);
-                                    const isServerDone = item.status === 'succeeded' || item.status === 'failed';
+                                    const isServerDone = item.status === 'succeeded' || item.status === 'failed' || item.status === 'duplicate';
                                     const isUploading = !isServerDone && (activeUpload?.status === 'uploading' || item.status === 'in_progress' || item.status === 'pending');
 
                                     const clientProgress = activeUpload ? activeUpload.progress : 0;
@@ -194,6 +208,11 @@ export default function History() {
                                                     <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 font-mono uppercase tracking-wide">
                                                         <XCircle className="h-3 w-3" />
                                                         <span>Failed</span>
+                                                    </div>
+                                                ) : item.status === 'duplicate' ? (
+                                                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-mono uppercase tracking-wide">
+                                                        <Copy className="h-3 w-3" />
+                                                        <span>Duplicate</span>
                                                     </div>
                                                 ) : Math.round(progress) >= 100 ? (
                                                     <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-mono uppercase tracking-wide">
@@ -236,13 +255,25 @@ export default function History() {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                {item.status === 'failed' && (
+                                                {(item.status === 'failed' || item.status === 'duplicate') && (
                                                     <button
                                                         onClick={() => handleReupload(item.fileName)}
                                                         className="p-1.5 rounded-md text-foreground hover:bg-muted transition-colors"
                                                         title="Retry upload"
                                                     >
                                                         <RotateCw className="h-4 w-4" />
+                                                    </button>
+                                                )}
+                                                {isUploading && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleCancel(item.uploadId);
+                                                        }}
+                                                        className="p-1.5 rounded-md text-red-500 hover:bg-red-500/10 transition-colors"
+                                                        title="Cancel upload"
+                                                    >
+                                                        <XCircle className="h-4 w-4" />
                                                     </button>
                                                 )}
                                             </td>

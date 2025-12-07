@@ -14,6 +14,8 @@ const {
   getThumbnail,
   subscribeUploadProgress,
   getTransfers,
+  cancelUpload,
+  deleteFile,
 } = require("../controllers/driveController");
 
 router.get("/auth-url", authMiddleware, getAuthUrl);
@@ -26,6 +28,8 @@ router.get("/files/download", optionalAuthMiddleware, downloadFile);
 router.get("/files/thumbnail", authMiddleware, getThumbnail);
 router.post("/files/preview-token", authMiddleware, createPreviewToken);
 router.get("/upload/progress/:uploadId", authMiddleware, subscribeUploadProgress);
+router.post("/upload/cancel/:uploadId", authMiddleware, cancelUpload);
+router.delete("/files/:fileId", authMiddleware, deleteFile);
 router.get("/debug/recent-uploads", authMiddleware, debugRecentUploads);
 router.get("/transfers", authMiddleware, getTransfers);
 
