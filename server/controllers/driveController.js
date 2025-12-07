@@ -108,6 +108,27 @@ function calculateChunkDistribution(fileSize, accounts, primaryAccountId = null)
   return chunks;
 }
 
+const FILE_SIZES = [
+  "Bytes",
+  "KB",
+  "MB",
+  "GB",
+  "TB",
+  "PB",
+  "EB",
+  "ZB",
+  "YB",
+];
+
+const formatBytes = (bytes, decimals = 2) => {
+  if (!+bytes) return "0 Bytes";
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const unit = FILE_SIZES[i] || FILE_SIZES[FILE_SIZES.length - 1];
+  return `${Number.parseFloat((bytes / k ** i).toFixed(dm))} ${unit}`;
+};
+
 /**
  * Upload a file with storage-aware chunking - splits based on available storage
  * @param {string} uploadId - Unique upload identifier
@@ -117,6 +138,22 @@ function calculateChunkDistribution(fileSize, accounts, primaryAccountId = null)
  */
 async function uploadWithStorageAwareChunking(uploadId, file, accounts, userId, primaryAccountId = null) {
   try {
+    const sendLog = (p, text, type = 'info') => {
+      const entry = progressMap.get(uploadId);
+      if (entry) {
+        const logItem = { text, type, time: new Date().toLocaleTimeString() };
+        if (!entry.logs) entry.logs = [];
+        entry.logs.push(logItem);
+
+        if (entry.res) {
+          entry.res.write(`data: ${JSON.stringify({
+            progress: p,
+            totalChunks: chunkPlan.length,
+            log: logItem
+          })}\n\n`);
+        }
+      }
+    };
     console.log(`[DEBUG] Starting uploadWithStorageAwareChunking for ${uploadId}`);
     sendLog(0, `[SYS] Analyzing file: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)} MB)`, 'info');
     sendLog(0, `[ALGO] Calculating optimal storage distribution...`, 'info');
@@ -144,22 +181,7 @@ async function uploadWithStorageAwareChunking(uploadId, file, accounts, userId, 
 
     const CONCURRENCY_LIMIT = 3;
 
-    const sendLog = (p, text, type = 'info') => {
-      const entry = progressMap.get(uploadId);
-      if (entry) {
-        const logItem = { text, type, time: new Date().toLocaleTimeString() };
-        if (!entry.logs) entry.logs = [];
-        entry.logs.push(logItem);
-
-        if (entry.res) {
-          entry.res.write(`data: ${JSON.stringify({
-            progress: p,
-            totalChunks: chunkPlan.length,
-            log: logItem
-          })}\n\n`);
-        }
-      }
-    };
+    
 
     sendLog(0, `Analyzing file structure for ${file.originalname}...`, 'start');
     sendLog(0, `Storage distribution strategy: Distributed`, 'info');
