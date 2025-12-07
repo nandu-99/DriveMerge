@@ -333,20 +333,79 @@ const oauthCallback = async (req, res) => {
   }
 };
 
+const getRefreshedDriveClient = async (refreshToken) => {
+  const tempClient = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  );
+  tempClient.setCredentials({ refresh_token: refreshToken });
+  
+  const { credentials } = await tempClient.refreshAccessToken();
+  return google.drive({ version: "v3", auth: tempClient });
+};
+
 const getAccounts = async (req, res) => {
   try {
     const userId = req.user.id;
     const accounts = await prisma.driveAccount.findMany({
       where: { userId },
-      select: { id: true, email: true, usedSpaceGb: 1, totalSpaceGb: 1 },
+      select: {
+        id: true,
+        email: true,
+        refreshToken: true,
+        usedSpaceGb: true,
+        totalSpaceGb: true,
+      },
     });
-    const formatted = accounts.map((a) => ({
-      id: a.id,
-      email: a.email,
-      usedSpace: Number(a.usedSpaceGb.toFixed(1)),
-      totalSpace: Number(a.totalSpaceGb.toFixed(1)),
-    }));
-    res.json(formatted);
+
+    const updatedAccounts = [];
+
+    for (const acc of accounts) {
+      let usedSpaceGb = acc.usedSpaceGb;
+      let totalSpaceGb = acc.totalSpaceGb;
+
+      try {
+        const drive = await getRefreshedDriveClient(acc.refreshToken);
+
+        const about = await drive.about.get({
+          fields: "storageQuota(limit,usage,usageInDrive,usageInDriveTrash)",
+        });
+
+        const { limit, usage } = about.data.storageQuota;
+
+        const newTotalGb = limit ? Number(limit) / 1024 ** 3 : null;
+        const newUsedGb = Number(usage) / 1024 ** 3;
+
+        if (
+          usedSpaceGb !== newUsedGb ||
+          totalSpaceGb !== newTotalGb ||
+          usedSpaceGb === null ||
+          totalSpaceGb === null
+        ) {
+          await prisma.driveAccount.update({
+            where: { id: acc.id },
+            data: {
+              usedSpaceGb: newUsedGb,
+              totalSpaceGb: newTotalGb,
+            },
+          });
+
+          usedSpaceGb = newUsedGb;
+          totalSpaceGb = newTotalGb;
+        }
+      } catch (driveErr) {
+        console.error(`Failed to refresh storage info for ${acc.email}:`, driveErr);
+      }
+
+      updatedAccounts.push({
+        id: acc.id,
+        email: acc.email,
+        usedSpace: usedSpaceGb ? Number(usedSpaceGb.toFixed(1)) : null,
+        totalSpace: totalSpaceGb ? Number(totalSpaceGb.toFixed(1)) : null,
+      });
+    }
+
+    res.json(updatedAccounts);
   } catch (err) {
     console.error("getAccounts error:", err);
     res.status(500).json({ message: "Failed to fetch accounts" });
