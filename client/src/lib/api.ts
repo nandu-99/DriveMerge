@@ -32,16 +32,16 @@ export async function apiFetch(path: string, opts: FetchOptions = {}) {
     credentials: "include",
   });
 
-  
+
   if (res.status === 401 && !opts._retry) {
     const newToken = await refreshAccessToken();
     if (newToken) {
-      
+
       return apiFetch(path, { ...opts, _retry: true });
     } else {
-      
+
       clearTokens();
-      
+
     }
   }
 
@@ -79,4 +79,8 @@ export async function apiGet(path: string) {
   return apiFetch(path, { method: "GET" });
 }
 
-export default { apiFetch, apiPost, apiGet };
+export async function apiDelete(path: string) {
+  return apiFetch(path, { method: "DELETE" });
+}
+
+export default { apiFetch, apiPost, apiGet, apiDelete };

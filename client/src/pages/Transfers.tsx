@@ -41,64 +41,24 @@ const Transfers = () => {
       ];
     }
 
-    const currentLogs: {
-      time: string;
-      text: string;
-      type: "info" | "start" | "process" | "success" | "error";
-    }[] = [];
+    // Use server-provided logs if available (Accurate Mode)
+    if (recentUpload.logs && recentUpload.logs.length > 0) {
+      // Show last 6 logs and map generic type to specific union
+      return recentUpload.logs.slice(-6).map(l => ({
+        time: l.time,
+        text: l.text,
+        type: l.type as "info" | "start" | "process" | "success" | "error"
+      }));
+    }
 
-    const startTime = new Date(
-      recentUpload.startedAt
-    ).toLocaleTimeString();
-
-    currentLogs.push({
+    // Fallback: Just show "Initializing" if started but no logs yet
+    const startTime = new Date(recentUpload.startedAt).toLocaleTimeString();
+    return [{
       time: startTime,
-      text: `Initialized upload: ${recentUpload.name} (${formatBytes(
-        recentUpload.size
-      )})`,
-      type: "start",
-    });
-
-    const progress = recentUpload.progress;
-    const chunksCompleted = Math.floor((progress / 100) * totalChunks);
-
-    if (progress > 0) {
-      currentLogs.push({
-        time: startTime,
-        text: `Allocating resources across ${accounts.length} connected drives...`,
-        type: "info",
-      });
-    }
-
-    for (let i = 1; i <= chunksCompleted; i++) {
-      currentLogs.push({
-        time: "...",
-        text: `Transferred chunk ${i}/${totalChunks} to storage cluster`,
-        type: "process",
-      });
-    }
-
-    if (recentUpload.status === "done" || progress >= 100) {
-      currentLogs.push({
-        time: new Date().toLocaleTimeString(),
-        text: "Verifying file integrity...",
-        type: "info",
-      });
-      currentLogs.push({
-        time: new Date().toLocaleTimeString(),
-        text: "Upload completed successfully.",
-        type: "success",
-      });
-    } else if (recentUpload.status === "error") {
-      currentLogs.push({
-        time: new Date().toLocaleTimeString(),
-        text: "Upload failed: Connection interrupted.",
-        type: "error",
-      });
-    }
-
-    return currentLogs.slice(-6);
-  }, [recentUpload, totalChunks, accounts.length]);
+      text: `Initializing upload: ${recentUpload.name} (${formatBytes(recentUpload.size)})`,
+      type: "start"
+    }];
+  }, [recentUpload]);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
