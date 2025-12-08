@@ -1,91 +1,140 @@
 # DriveMerge
 
-DriveMerge is a cloud storage management platform that enables users to connect multiple Google Drive accounts, manage their files, and efficiently utilize their combined storage. The project is being developed in two phases to progressively enhance its functionality and security.
+## Unified Cloud Storage Management Platform
+
+**A cloud storage aggregation system for intelligent multi-account Google Drive integration**
+
+DriveMerge is a middleware platform that aggregates multiple Google Drive accounts into a unified storage interface. The system intelligently distributes files across linked accounts, overcoming individual storage limitations while maintaining complete transparency from the user's perspective.
 
 ---
 
-## Hosted URLs
+## Table of Contents
 
-**Frontend:**
-[https://drive-merge.vercel.app/](https://drive-merge.vercel.app/)
-
-**Backend:**
-[https://drive-merge-server.vercel.app/](https://drive-merge-server.vercel.app/)
+- [Overview](#overview)
+- [Problem Statement](#problem-statement)
+- [Proposed Solution](#proposed-solution)
+- [Hosted URLs](#hosted-urls)
+- [Key Features](#key-features)
+- [Technology Stack](#technology-stack)
+- [Setup Instructions](#setup-instructions)
+- [Current Limitations](#current-limitations)
+- [Future Scope](#future-scope)
+- [Contributors](#contributors)
 
 ---
 
 ## Overview
 
-The main goal of **DriveMerge** is to overcome Google Drive’s individual storage limitations by allowing users to merge storage space across multiple Google accounts. Users can log in with multiple accounts, upload files, and seamlessly manage their data through a single unified interface.
+Google Drive's free tier limits individual account storage to **15 GB**, forcing users with larger storage needs to maintain multiple accounts and manually manage data fragmentation. DriveMerge addresses this critical gap by implementing an intelligent middleware layer that seamlessly integrates multiple Google Drive accounts into a single virtual storage pool.
+
+The system employs three key innovations:
+1. **Storage-aware distributed allocation** that respects individual account quotas
+2. **Parallel chunk uploading** to reduce total transfer time
+3. **Transparent file reconstruction** that reassembles distributed files on download without user awareness
 
 ---
 
-## Project Phases
+## Problem Statement
 
-### **Phase 1: Core Integration and File Management**
+Users seeking to utilize multiple free-tier accounts face significant constraints:
 
-* Implemented login with Google Drive through OAuth authentication.
-* Users can connect multiple Google accounts to the application.
-* Integrated Google Drive API to:
-
-  * View connected drives’ total and used storage.
-  * Upload files to Google Drive.
-* Currently, files are uploaded to the **first connected account**.
-* The app is in **test mode** in Google Cloud Platform — meaning only developer-approved accounts can connect.
-
-  * This limitation exists because the app handles sensitive Drive access, and verification from Google is required before public release.
+| Challenge | Impact |
+|-----------|--------|
+| **Storage Limit** | 15 GB per Google Drive account restricts users unable or unwilling to purchase premium storage |
+| **Account Switching Overhead** | Manual switching between accounts consumes user time and creates workflow interruptions |
+| **File Fragmentation** | Data spread across accounts complicates search, discovery, and collaborative workflows |
 
 ---
 
-### **Phase 2: Advanced Upload and Storage Optimization**
+## Proposed Solution
 
-* When a file exceeds the storage capacity of the first connected Drive:
+DriveMerge delivers a comprehensive solution with four core components:
 
-  * It will be **automatically segmented into chunks**.
-  * Each chunk will be uploaded to different connected accounts.
-* A **centralized database** will track all file chunks, their locations, and associated account details.
-* When a user downloads or views a file:
+**Unified Interface**
+Seamlessly combines multiple Google Drive accounts into a single, intuitive interface for effortless management.
 
-  * The backend will **merge all chunks** and send the complete file to the frontend.
-* Future enhancements will include:
+**Automated Segmentation**
+Files are automatically segmented and intelligently distributed across linked accounts to optimize total storage usage.
 
-  * **Data encryption** for all communication between frontend and backend.
-  * **Encrypted storage** of access tokens and passwords in the database.
-  * **UI animation** to visually represent the file segmentation and upload process.
+**Transparent Reconstruction**
+Files are transparently reconstructed on download, providing a seamless user experience without manual intervention.
+
+**Secure Access**
+Leverages industry-standard OAuth 2.0 for secure, credential-less access to linked Google Drive accounts.
+
+---
+
+## Hosted URLs
+
+| Component | URL |
+|-----------|-----|
+| **Frontend** | [https://drive-merge.vercel.app/](https://drive-merge.vercel.app/) |
+| **Backend** | [https://drive-merge-server.vercel.app/](https://drive-merge-server.vercel.app/) |
+
+---
+
+## Key Features
+
+**Authentication & Account Management**
+- Multi-account OAuth login with secure Google authentication
+- Seamless account linking and concurrent authentication flows
+
+**Storage Management**
+- Unified storage management interface combining all linked drives
+- Combined dashboard showing total and used storage across accounts
+- Real-time storage capacity tracking and quota monitoring
+
+**File Operations**
+- Automatic file chunking and smart distribution logic
+- Parallel chunk uploads to multiple accounts (up to 3 concurrent transfers)
+- Seamless file reconstruction during download
+- Memory-safe streaming downloads for large files
+
+**Performance & Optimization**
+- Large file handling supporting uploads beyond single-account limits
+- Parallel uploads significantly reducing overall upload time
+- Efficient storage distribution across connected accounts
 
 ---
 
 ## Technology Stack
 
-### **Frontend**
+**Frontend**
+- React.js with TypeScript for type-safe development
+- Responsive user interface with real-time state management
+- Intuitive file management with drag-and-drop upload capabilities
 
-* **React.js** with **TypeScript**
-* Provides a clean and responsive user interface for account management and file uploads.
+**Backend**
+- Node.js with Express.js for robust API services
+- OAuth2 authentication handler managing refresh tokens
+- Upload engine implementing chunking logic and parallel transfer coordination
+- Download proxy reconstructing files from distributed chunks
 
-### **Backend**
+**Database**
+- MySQL for relational data storage
+- Prisma ORM for schema management and efficient database interaction
 
-* **Node.js** with **Express.js**
-* Handles Google Drive API integration, file segmentation logic, and user authentication.
-
-### **Database**
-
-* **MySQL** for relational data storage.
-* **Prisma ORM** for schema management and efficient database interaction.
+**Cloud Integration**
+- Google Drive API for authentication, file operations, and quota monitoring
 
 ---
 
-## Setup Instructions (For Developers)
+## Setup Instructions
 
-### **1. Clone the Repository**
+### Prerequisites
+- Node.js (v14 or higher)
+- npm or yarn package manager
+- MySQL database
+- Google Cloud project with Drive API enabled
+
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/nandu-99/DriveMerge
 cd DriveMerge
 ```
 
----
-
-### **2. Setup Backend**
+### 2. Setup Backend
 
 ```bash
 cd server
@@ -93,22 +142,19 @@ npm install
 cp .env.example .env
 ```
 
-* Add your environment variables
-* Run Prisma migrations:
+Configure environment variables with your Google Cloud credentials and database configuration.
 
+Run Prisma migrations:
 ```bash
 npx prisma migrate dev
 ```
 
-* Start the backend server:
-
+Start the backend server:
 ```bash
 node index.js
 ```
 
----
-
-### **3. Setup Frontend**
+### 3. Setup Frontend
 
 ```bash
 cd ..
@@ -117,35 +163,51 @@ npm install
 cp .env.example .env
 ```
 
-* Add the required environment variables
-* Run the development server:
+Configure environment variables with your API configuration.
 
+Run the development server:
 ```bash
 npm run dev
 ```
+
+The frontend will be available at `http://localhost:3000`
 
 ---
 
 ## Current Limitations
 
-* The application is currently in **Google Cloud test mode**, so only developer-approved users can log in with Google Drive.
-* File uploads currently target the first connected Drive. Multi-account segmentation will be available in the next phase.
+- **Google Cloud Test Mode**: Application is in test mode — only developer-approved users can authenticate with Google Drive
+- **Single Account Upload**: File uploads currently target the first connected Drive only
+- **No Encryption**: Access tokens stored in plain text (encryption planned for Phase 2)
+- **Authentication Scope**: Limited to Google Drive integration (multi-cloud support planned)
 
 ---
 
-## Future Enhancements
+## Future Scope
 
-* Full-scale **Google verification** for public access.
-* **End-to-end encryption** for enhanced data security.
-* **Visual animations** showing real-time segmentation and upload progress.
-* Optimized **merge and download** operations for large files.
+**End-to-End Encryption**
+Client-side encryption before upload to ensure zero-knowledge data privacy and protection from unauthorized access.
+
+**Multi-Cloud Support**
+Extend integration to platforms like Dropbox and OneDrive, creating a universal storage aggregation system.
+
+**Advanced File Versioning**
+Introduce version control and rollback capabilities to track file changes and restore previous versions across connected accounts.
+
+**Analytics Dashboard**
+Provide detailed insights on storage usage trends, distribution patterns, and system performance metrics.
+
+**Content-Based Deduplication**
+Identify identical files across accounts and eliminate redundant storage to optimize capacity utilization.
 
 ---
 
 ## Contributors
 
-* **Charan Adithya – 230075**
-* **Vivekananda – 230077**
-* **Aditya Kammati – 230145**
+| Name | Student ID |
+|------|-----------|
+| **Charan Adithya** | 230075 |
+| **Vivekananda** | 230077 |
+| **Aditya Kammati** | 230145 |
 
 ---
